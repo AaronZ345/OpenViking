@@ -9,6 +9,7 @@ from openviking.server.auth import get_request_context
 from openviking.server.dependencies import get_service
 from openviking.server.identity import AccountNamespacePolicy, RequestContext, Role
 from openviking.server.models import Response
+from openviking.service.rebuild_service import get_rebuild_service
 from openviking.storage.viking_fs import get_viking_fs
 from openviking_cli.exceptions import PermissionDeniedError
 from openviking_cli.session.user_id import UserIdentifier
@@ -44,6 +45,13 @@ class RegisterUserRequest(BaseModel):
 
 class SetRoleRequest(BaseModel):
     role: str
+
+
+class RebuildRequest(BaseModel):
+    uri: str
+    mode: str = "vectors_only"
+    wait: bool = True
+    reason: str | None = None
 
 
 def _get_api_key_manager(request: Request):
@@ -269,3 +277,20 @@ async def regenerate_key(
     manager = _get_api_key_manager(request)
     new_key = await manager.regenerate_key(account_id, user_id)
     return Response(status="ok", result={"user_key": new_key})
+
+
+@router.post("/rebuild")
+async def rebuild(
+    request: RebuildRequest,
+    ctx: RequestContext = require_admin_role(Role.ROOT, Role.ADMIN),
+):
+    """Rebuild index artifacts for a URI-scoped maintenance target."""
+    service = get_rebuild_service()
+    result = await service.execute(
+        uri=request.uri,
+        mode=request.mode,
+        wait=request.wait,
+        reason=request.reason,
+        ctx=ctx,
+    )
+    return Response(status="ok", result=result)
