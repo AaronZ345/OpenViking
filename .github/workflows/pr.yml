@@ -38,6 +38,7 @@ jobs:
             examples/codex-memory-plugin/scripts/capture-utils.test.mjs \
             examples/codex-memory-plugin/scripts/marketplace.test.mjs \
             examples/codex-memory-plugin/scripts/ov-credentials.test.mjs \
+            examples/codex-memory-plugin/scripts/ov-memory-doctor.test.mjs \
             examples/codex-memory-plugin/scripts/recall-compressor-profile.test.mjs \
             examples/codex-memory-plugin/scripts/auto-recall.test.mjs \
             examples/codex-memory-plugin/scripts/session-start-commit.test.mjs \

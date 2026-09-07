@@ -69,7 +69,8 @@ Then enable plugin hooks (if your Codex build doesn't already) by adding to `~/.
 
 ```toml
 [features]
-plugin_hooks = true
+hooks = true
+# plugin_hooks = true  # for older Codex releases
 ```
 
 Finally start Codex and trust the plugin hooks once:
