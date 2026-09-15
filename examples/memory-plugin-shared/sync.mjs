@@ -52,10 +52,12 @@ export const TARGETS = [
     dir: join(ROOT, "examples", "pi-coding-agent-extension", "shared"),
     committed: false,
   },
+  // Published as a package too, but ov-install's GitHub source downloads the
+  // plugin file by file at a git ref, and it has no way to run this generator.
   {
     root: join(ROOT, "examples", "openclaw-plugin"),
     dir: join(ROOT, "examples", "openclaw-plugin", "shared"),
-    committed: false,
+    committed: true,
   },
 ];
 

@@ -113,7 +113,7 @@ per-harness 章节（档案卡）只写差异；所有共享事实均在本章�
 
 `examples/memory-plugin-shared/lib/` 下共 25 个 `.mjs` 模块，是 JS 系 harness 的唯一事实源。两种消费形态：
 
-1. **Vendoring（复制）**：由 `sync.mjs` 分发到 7 个目标，每个文件首行加 `// GENERATED FROM ... DO NOT EDIT.`（因此 vendored 副本行号 = lib 源行号 + 1）。分发清单不再手写：每个目标拿的是自身代码实际 import 的传递闭包。claude-code、codex、agent-plugins 由宿主直接指向仓库目录安装，所以生成副本提交进 git，并由 main 上的推送重新生成；opencode、dsh、openclaw 以 npm 包发布，pi 由安装脚本打包，这四个在打包时生成副本，git 中不保留。
+1. **Vendoring（复制）**：由 `sync.mjs` 分发到 7 个目标，每个文件首行加 `// GENERATED FROM ... DO NOT EDIT.`（因此 vendored 副本行号 = lib 源行号 + 1）。分发清单不再手写：每个目标拿的是自身代码实际 import 的传递闭包。claude-code、codex、agent-plugins 由宿主直接指向仓库目录安装，openclaw 的 `ov-install` 可以按 git ref 逐个文件下载插件，所以这四个的生成副本提交进 git，并由 main 上的推送重新生成；opencode、dsh 以 npm 包发布，pi 由安装脚本打包，这三个在打包时生成副本，git 中不保留。
 2. **相对路径直接 import（不复制）**：cursor / trae / trae-cn / zcode 直接 `import "../../memory-plugin-shared/lib/..."`；安装器把包与这些 hook 传递 import 到的共享模块一起复制到 `~/.openviking/agent-integrations/{<client>,memory-plugin-shared}/`，保持相对层级。这份安装集合对 import 闭合，包括 hook 运行时所需的 workspace 配置层。运行期几个 harness 共用该目录，任一重装都会整体覆盖。
 
 核心模块速览（细节在各维度章展开）：

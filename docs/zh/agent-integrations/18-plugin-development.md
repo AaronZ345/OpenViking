@@ -319,8 +319,8 @@ examples/<host>-memory-plugin/ 独立原生插件需要时才创建
 
 | 交付方式 | 当前例子 | 生成要求 |
 | --- | --- | --- |
-| 宿主直接加载 Git 中的插件目录 | Claude Code、Codex、`agent-plugins` | 共享副本提交到 Git，checkout 后即可加载 |
-| npm 包或安装归档 | OpenCode、DSH、OpenClaw、Pi | 在 prepack 或 staging 时生成；运行时副本不提交 Git |
+| 宿主直接加载 Git 中的插件目录 | Claude Code、Codex、`agent-plugins`、OpenClaw（`ov-install` 的 GitHub 源） | 共享副本提交到 Git，checkout 后即可加载 |
+| npm 包或安装归档 | OpenCode、DSH、Pi | 在 prepack 或 staging 时生成；运行时副本不提交 Git |
 | 安装器组装相邻运行时目录 | Cursor、TRAE、TRAE CN、ZCode | 使用 `ASSEMBLED_ROOTS` 推导 `lib/MANIFEST`，按 manifest 复制共享运行时 |
 
 [`sync.mjs`](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/sync.mjs) 是上述目标的登记处。新增独立插件登记 `TARGETS` 的 source root、目标目录和 `committed`；新增组装根才扩展 `ASSEMBLED_ROOTS`，普通薄宿主通常已被现有根覆盖。是否交付 Skill 另外登记 `SKILL_TARGETS`。不要维护一份“需要复制的 20 个模块”清单。

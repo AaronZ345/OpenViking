@@ -319,8 +319,8 @@ Use explicit relative imports. Where shared modules have TypeScript consumers, k
 
 | Distribution | Current examples | Requirement |
 | --- | --- | --- |
-| Host loads a plugin directory directly from Git | Claude Code, Codex, `agent-plugins` | Commit shared copies so a checkout is loadable |
-| npm package or installation archive | OpenCode, DSH, OpenClaw, Pi | Generate during prepack or staging; do not commit runtime copies |
+| Host loads a plugin directory directly from Git | Claude Code, Codex, `agent-plugins`, OpenClaw (`ov-install` GitHub source) | Commit shared copies so a checkout is loadable |
+| npm package or installation archive | OpenCode, DSH, Pi | Generate during prepack or staging; do not commit runtime copies |
 | Installer assembles an adjacent runtime directory | Cursor, TRAE, TRAE CN, ZCode | Derive `lib/MANIFEST` from `ASSEMBLED_ROOTS` and copy runtime modules from it |
 
 Register these targets in [`sync.mjs`](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/sync.mjs). For separate plugins, add the source root, output directory, and `committed` policy to `TARGETS`. Extend `ASSEMBLED_ROOTS` only for a new assembled root; ordinary thin hosts are usually covered already. Register skill delivery separately in `SKILL_TARGETS`. Do not maintain a manual list of runtime modules to copy.
