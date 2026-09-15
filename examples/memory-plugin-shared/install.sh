@@ -2338,8 +2338,16 @@ install_pi() {
   rm -rf "$dest"
   mkdir -p "$(dirname "$dest")"
   mv "$tmp" "$dest"
-  pi install "$dest" || warn "$(t 'pi extension copied but pi install registration failed; run pi install manually.' 'pi 扩展文件已复制，但 pi install 注册失败；请手动运行 pi install。')"
-  info "$(t 'pi extension installed:' 'pi 扩展已安装：') $dest"
+  # ~/.pi/agent/extensions/ is one of pi's auto-discovery roots, so copying the
+  # extension there is enough for pi to load it. Do NOT also `pi install` the
+  # same path: that adds a "packages" entry pointing at the directory while
+  # auto-discovery already found its index.ts, and pi dedupes on the canonical
+  # path — a directory and its index.ts don't match, so the extension loads
+  # twice (duplicate /viking command). Instead, purge any stale packages entry
+  # left by older installer versions; `pi remove` on a local path only edits
+  # settings and never deletes the copied files.
+  pi remove "$dest" >/dev/null 2>&1 || true
+  info "$(t 'pi extension installed (auto-discovered):' 'pi 扩展已安装（自动发现）：') $dest"
 }
 
 # ---------------------------------------------------------------------------
@@ -2558,16 +2566,16 @@ EOF
   fi
   if contains_harness pi; then
     if [ -f "$HOME/.pi/agent/extensions/openviking/index.ts" ] || [ -f "$HOME/.pi/agent/extensions/openviking/index.js" ]; then
-      info "pi: $PLUGIN_NAME $(t 'extension files present' '扩展文件已存在')"
+      info "pi: $PLUGIN_NAME $(t 'extension files present (auto-discovered)' '扩展文件已存在（自动发现）')"
     else
       warn "pi: $PLUGIN_NAME $(t 'extension files not found' '未找到扩展文件')"
       ok=0
     fi
     if command -v pi >/dev/null 2>&1; then
+      # The extension lives under pi's auto-discovery root, so it must NOT appear
+      # as a configured "packages" entry — a stale entry there loads it twice.
       if pi list 2>/dev/null | grep -q 'extensions/openviking'; then
-        info "pi: $PLUGIN_NAME $(t 'registered in pi settings' '已注册到 pi settings')"
-      else
-        warn "pi: $PLUGIN_NAME $(t 'not registered in pi settings' '未注册到 pi settings')"
+        warn "pi: $PLUGIN_NAME $(t 'still registered as a package (duplicate load); run pi remove ~/.pi/agent/extensions/openviking' '仍作为 package 注册（会重复加载）；请运行 pi remove ~/.pi/agent/extensions/openviking')"
         ok=0
       fi
     fi

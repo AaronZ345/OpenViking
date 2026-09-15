@@ -34,7 +34,7 @@ Use the shared installer:
 bash examples/memory-plugin-shared/install.sh --harness pi
 ```
 
-The installer copies the extension to `~/.pi/agent/extensions/openviking` and registers it with `pi install`. The extension loads on next `pi` invocation.
+The installer copies the extension to `~/.pi/agent/extensions/openviking`, which is one of pi's auto-discovery roots, so pi loads it on the next `pi` invocation — no `packages` entry is needed. (Registering the same path with `pi install` would load it twice, so the installer avoids that and clears any stale entry left by older versions.)
 
 ### 3. Configure (optional)
 
