@@ -51,7 +51,6 @@ from openviking.session.memory.account_templates import (
 )
 from openviking.session.memory.memory_type_registry import get_default_registry
 from openviking.session.memory_policy import MemoryPolicy
-from openviking.storage.viking_fs import get_viking_fs
 from openviking_cli.exceptions import (
     FailedPreconditionError,
     InvalidArgumentError,
@@ -192,6 +191,7 @@ async def _check_account_exists(
     accounts = manager.get_accounts()
     if not any(item.get("account_id") == account_id for item in accounts):
         raise NotFoundError(account_id, "account")
+    manager.ensure_account_active(account_id)
     if refresh_scope is not None and not watcher_running:
         await manager.refresh_account_users_from_store(refresh_scope)
     return manager
@@ -410,37 +410,19 @@ async def migrate_legacy_data(
     return Response(status="ok", result={"task_id": task.task_id})
 
 
-@router.delete("/accounts/{account_id}")
+@router.delete("/accounts/{account_id}", status_code=202)
 @require_auth_root
 async def delete_account(
     request: Request,
     account_id: str = Path(..., description="Account ID"),
     ctx: RequestContext = Depends(get_request_context),
 ):
-    """Delete an account and cascade-clean its storage (AGFS + VectorDB)."""
-    manager = _get_api_key_manager(request)
-
-    # Cascade: remove AGFS data for the account.
-    # Use the raw AGFS path to bypass the VikingFS namespace guard
-    # (viking://user is a protected namespace root, not a real directory).
-    viking_fs = get_viking_fs()
-    try:
-        await viking_fs._async_agfs.rm(f"/local/{account_id}", recursive=True)
-    except Exception as e:
-        logger.warning(f"AGFS cleanup for account {account_id}: {e}")
-
-    # Cascade: remove VectorDB records for the account
-    try:
-        storage = viking_fs._get_vector_store()
-        if storage:
-            deleted = await storage.delete_account_data(account_id, ctx=ctx)
-            logger.info(f"VectorDB cascade delete for account {account_id}: {deleted} records")
-    except Exception as e:
-        logger.warning(f"VectorDB cleanup for account {account_id}: {e}")
-
-    # Finally delete the account metadata
-    await manager.delete_account(account_id)
-    return Response(status="ok", result={"deleted": True})
+    """Revoke an account and submit durable cleanup of its data."""
+    deletion_service = request.app.state.deletion_service
+    if deletion_service is None:
+        raise FailedPreconditionError("Deletion service is not initialized.")
+    result = await deletion_service.delete(account_id, actor=ctx)
+    return Response(status="ok", result=result)
 
 
 @router.get("/accounts/{account_id}/settings")
@@ -731,10 +713,10 @@ async def remove_user(
 ):
     """Revoke a user and start durable cleanup of their owned data."""
     _check_account_access(ctx, account_id)
-    deletion_service = request.app.state.user_deletion_service
+    deletion_service = request.app.state.deletion_service
     if deletion_service is None:
-        raise FailedPreconditionError("User deletion service is not initialized.")
-    result = await deletion_service.delete_user(account_id, user_id, actor=ctx)
+        raise FailedPreconditionError("Deletion service is not initialized.")
+    result = await deletion_service.delete(account_id, user_id, actor=ctx)
     return Response(status="ok", result=result)
 
 
