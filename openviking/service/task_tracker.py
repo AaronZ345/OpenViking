@@ -94,6 +94,9 @@ class TaskRecord:
 
     def to_dict(self, *, include_events: bool = False) -> Dict[str, Any]:
         """Serialize for JSON response."""
+        public_meta = deepcopy(self.meta)
+        public_meta.pop("submission_hash", None)
+        public_meta.pop("submission_token", None)
         return {
             **({"execution_events": deepcopy(self.execution_events)} if include_events else {}),
             "task_id": self.task_id,
@@ -102,7 +105,7 @@ class TaskRecord:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "resource_id": self.resource_id,
-            "meta": _sanitize_task_result(deepcopy(self.meta)),
+            "meta": _sanitize_task_result(public_meta),
             "stage": self.stage,
             "result": _sanitize_task_result(deepcopy(self.result)),
             "error": self.error,
@@ -1061,6 +1064,83 @@ class TaskTracker:
         if task is None or not self._matches_owner(task, account_id, user_id):
             return None
         return self._copy(task)
+
+    async def _prune_persisted_expired(self, payload: Dict[str, Any]) -> bool:
+        """Prune cold records under the same lock and I/O budget as mutations."""
+        candidate = self._record_from_payload(payload)
+        now = time.time()
+        if not self._is_expired(candidate, now):
+            return False
+        async with self._task_locks.acquire(candidate.task_id):
+            # The scan may race with a lifecycle write. Re-read under the same
+            # lock used by mutations before removing any durable state.
+            current = await self._store_io.run(
+                "get",
+                lambda: self._store.get(
+                    candidate.task_id, account_id=candidate.account_id, user_id=candidate.user_id
+                ),
+            )
+            if current is None:
+                return True
+            task = self._record_from_payload(current)
+            if not self._is_expired(task, now) or self._work_index.has_work(task.task_id):
+                payload.clear()
+                payload.update(current)
+                return False
+            await self._store_io.run(
+                "delete",
+                lambda: run_to_completion(
+                    lambda: self._store.delete(
+                        task.task_id, account_id=task.account_id, user_id=task.user_id
+                    )
+                ),
+            )
+            with self._lock:
+                self._tasks.pop(task.task_id, None)
+            return True
+
+    async def list_page(
+        self,
+        *,
+        account_id: str,
+        user_id: str,
+        limit: int,
+        before: tuple[float, str] | None = None,
+        include_cached: bool = False,
+        additional_owner: tuple[str, str] | None = None,
+        **filters: Any,
+    ) -> list[TaskRecord]:
+        from openviking.service.task_pagination import matches
+
+        async def read():
+            owners = {(account_id, user_id)}
+            if additional_owner:
+                owners.add(additional_owner)
+            records = []
+            for account, user in owners:
+                page = await self._store.list_page(
+                    account,
+                    user_id=user,
+                    limit=limit,
+                    before=before,
+                    prune_expired=self._prune_persisted_expired,
+                    io_limiter=self._store_io,
+                    **filters,
+                )
+                records.extend(self._record_from_payload(record) for record in page)
+            if include_cached:
+                records.extend(self._copy(t) for t in self._cache_snapshot())
+            visible = {
+                t.task_id: t
+                for t in records
+                if (before is None or (t.created_at, t.task_id) < before)
+                and matches(t.to_dict(), **filters)
+            }
+            return sorted(visible.values(), key=lambda t: (t.created_at, t.task_id), reverse=True)[
+                :limit
+            ]
+
+        return await self._dispatcher.run(read)
 
     async def list_tasks(
         self,
