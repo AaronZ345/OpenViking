@@ -195,6 +195,8 @@ docker run -d \
   ghcr.io/volcengine/openviking:latest
 ```
 
+> We recommend the `ghcr.io` image. If `ghcr.io` is hard to reach, use `openviking-cn-beijing.cr.volces.com/volcengine/openviking:latest` instead. The same applies to the commands below.
+
 By default, the Docker image starts:
 - OpenViking HTTP service on port `1933` (bound to `0.0.0.0`), also serving the Web Studio UI at `/studio`
 - `vikingbot` gateway

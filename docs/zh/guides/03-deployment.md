@@ -193,6 +193,8 @@ docker run -d \
   ghcr.io/volcengine/openviking:latest
 ```
 
+> 推荐优先使用 `ghcr.io` 镜像；如果访问有问题，可改用 `openviking-cn-beijing.cr.volces.com/volcengine/openviking:latest`。本节后续命令同理。
+
 Docker 镜像默认会同时启动：
 - OpenViking HTTP 服务，端口 `1933`（绑定 `0.0.0.0`），同时在 `/studio` 提供 Web Studio 前端
 - `vikingbot` gateway
