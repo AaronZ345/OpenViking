@@ -43,7 +43,6 @@ from openviking.utils.time_utils import get_current_timestamp
 from openviking_cli.exceptions import InvalidArgumentError
 from openviking_cli.utils import get_logger
 from openviking_cli.utils.config.vectordb_config import DEFAULT_INDEX_NAME, VectorDBBackendConfig
-from openviking_cli.utils.uri import VikingURI
 
 logger = get_logger(__name__)
 
@@ -201,6 +200,7 @@ class _AsyncVectorAdapter:
                 )
 
         await asyncio.to_thread(_update)
+
 
 class _SingleAccountBackend:
     """绑定单个 account 的后端实现（内部类）"""
@@ -1757,11 +1757,8 @@ class VikingVectorIndexBackend:
         scopes: List[FilterExpr] = [Eq("uri", uri)]
         if recursive:
             scopes.append(PathScope("uri", uri, depth=-1))
-        # Chunk URIs are siblings in the path index. Scan one parent level and
-        # filter exact transfer entries below, without backend-specific operators.
-        parent = VikingURI(uri).parent
-        if parent is not None and parent.uri != "viking://":
-            scopes.append(PathScope("uri", parent.uri, depth=1))
+        # Never include the parent: unrelated siblings are outside transfer locks
+        # and may change between the count and paginated reads.
         return And([Eq("account_id", ctx.account_id), Or(scopes)])
 
     async def _scan_uri_transfer_scope(
@@ -1822,9 +1819,10 @@ class VikingVectorIndexBackend:
                 for record in page
                 if isinstance(record.get("uri"), str)
                 and (
-                    self._vector_entry_uri(record["uri"], selected_entries) in selected_entries
+                    record["uri"] in selected_entries
                     if selected_entries is not None
-                    else uri_in_transfer_scope(record["uri"], uri, recursive=recursive)
+                    else record["uri"] == uri
+                    or (recursive and record["uri"].startswith(uri.rstrip("/") + "/"))
                 )
             ]
             if include_full_records and scoped:
@@ -1914,24 +1912,30 @@ class VikingVectorIndexBackend:
         target_entry_exists: Callable[[str], Awaitable[bool]] | None = None,
     ) -> tuple[List[Dict[str, Any]], int, Dict[str, Dict[str, Any]]]:
         """Read selected source records and remove affected target records."""
-        source_records, batches = await self._scan_uri_transfer_scope(
-            ctx,
-            source_uri,
-            recursive=recursive,
-            include_full_records=True,
-        )
-
         selected_source_uris = {
             resolve_uri(uri).uri
             for uri in (source_uris if source_uris is not None else [source_uri])
         }
-        if source_uris is not None:
-            source_records = [
-                record
-                for record in source_records
-                if self._vector_entry_uri(str(record["uri"]), selected_source_uris)
-                in selected_source_uris
-            ]
+        if source_uris is None:
+            source_records, batches = await self._scan_uri_transfer_scope(
+                ctx, source_uri, recursive=recursive, include_full_records=True
+            )
+        else:
+            # Filesystem transfers supply the actual entries under their locks.
+            # Match legacy mv: do not discover independent #chunk_* records.
+            source_records = []
+            batches = 0
+            source_entries = sorted(selected_source_uris)
+            for offset in range(0, len(source_entries), 100):
+                records, scanned_batches = await self._scan_uri_transfer_scope(
+                    ctx,
+                    source_uri,
+                    recursive=False,
+                    include_full_records=True,
+                    entry_uris=source_entries[offset : offset + 100],
+                )
+                source_records.extend(records)
+                batches += scanned_batches
 
         # Match legacy mv: unindexed source entries leave old target records intact.
         if not source_records:
