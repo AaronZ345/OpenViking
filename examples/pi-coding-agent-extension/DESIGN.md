@@ -173,6 +173,7 @@ The entry point. It loads the config, returns immediately when disabled, constru
 | `before_agent_start` | Await startup, queue the prompt for recall, compose system-prompt additions |
 | `context` | Run the pending recall, apply the takeover transform, inject recall |
 | `tool_call` | Redirect host file tools that were handed a `viking://` URI |
+| `tool_result` | Append a notice to a `bash` result whose command carried a `viking://` URI |
 | `turn_end` | Sync the branch, feed the token estimate to takeover, update the status line |
 | `session_before_compact` | Takeover compaction, or a commit plus a fresh overview |
 | `session_shutdown` | Persist takeover state, or a final commit |
@@ -184,7 +185,7 @@ The entry point. It loads the config, returns immediately when disabled, constru
 
 **System prompt.** `before_agent_start` appends the profile block built by the shared `profile-inject.mjs` and capped at `profileTokenBudget`; outside takeover, the archive overview cached at resume or after a pre-compact commit; and one line naming the seven tools. Under takeover the overview reaches the model through the `context` hook instead, so it is not appended twice.
 
-**Tool guard.** `guardVikingUriToolCall` (`lib/uri-guard-adapter.mjs`) watches for a `viking://` URI handed to a host tool that cannot read one — `read`, `grep`, `find`, `ls`, `bash` — and blocks the call with the equivalent `viking_*` invocation spelled out. Without it the model burns turns on a file path that does not exist on disk.
+**Tool guard.** `guardVikingUriToolCall` (`lib/uri-guard-adapter.mjs`) watches for a `viking://` URI handed as a path to a host file tool that cannot read one — `read`, `grep`, `find`, `ls` — and blocks the call with the equivalent `viking_*` invocation spelled out. Without it the model burns turns on a file path that does not exist on disk. A grep `pattern` is search text, not a path, so grepping a local tree for `viking://` is not blocked. `bash` is not blocked either: a URI in a command is as often data (an `ov` argument, an HTTP payload, a search pattern) as a path the model hoped to open. The command runs, and on `tool_result` `noticeVikingUriToolResult` appends a text block to its output that names `viking_read` / `viking_search` and tells the model to ignore the notice when the URI was intentional.
 
 **Surface.** The status line reports connection, entries added on the last turn, and either takeover coverage against its threshold or the plain commit threshold. `/viking` prints that same state; `/viking commit` forces a flush and commit, which under takeover also advances the boundary.
 

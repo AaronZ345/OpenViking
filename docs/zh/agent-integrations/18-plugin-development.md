@@ -112,7 +112,7 @@ sync / install / pack 负责把这张依赖图完整交付到机器上
 | 批量发送、离线重放、重试分类 | [batch-send.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/batch-send.mjs)、[pending-queue.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/pending-queue.mjs)、[retryable.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/retryable.mjs) | 何时调用、发送成功后如何推进宿主游标 |
 | 后台写入 | [async-writer.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/async-writer.mjs) | 宿主允许的 detach 时机和恢复措施 |
 | MCP 配置与协议 | [mcp-proxy-config.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/mcp-proxy-config.mjs)、[mcp-proxy-core.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/mcp-proxy-core.mjs) | 配置投影、日志工厂、确有必要的本地工具 |
-| 虚拟 URI 检查、诊断 | [uri-guard.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/uri-guard.mjs)、[doctor-core.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/doctor-core.mjs) | 工具名、拒绝格式、宿主安装与状态检查 |
+| 虚拟 URI 检查、诊断 | [uri-guard.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/uri-guard.mjs)、[doctor-core.mjs](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/doctor-core.mjs) | 工具名、拒绝与提示 envelope、宿主安装与状态检查 |
 
 依赖必须从宿主适配器指向共享能力。共享能力不能 import 某个宿主目录；需要宿主动作时，由调用者传入小而明确的回调。不要为一次文件读取引入通用插件容器、服务定位器或继承体系。共享模块也不能反向依赖安装器、测试代码或用户界面。
 
@@ -192,7 +192,7 @@ peer 解析使用共享实现。现状默认从 Git 身份推导，普通非 Git
 | 压缩前 | 确认压缩前消息已写入，再执行相应提交 | `PreCompact` 提交已有消息；本入口不补采 transcript | `PreCompact` 补齐 transcript 后提交 |
 | 会话结束 | 完成尚未完成的写入与提交 | `SessionEnd` 提交已有消息；本入口不补采 transcript | `SessionEnd` 后台补齐并提交，保留启动补偿 |
 | 子代理 | 保留身份和父子关系，避免重复 | `SubagentStart`、`SubagentStop` | 当前 hook manifest 没有这两个事件 |
-| 本地工具检查 | 阻止把虚拟 URI 当本地路径 | `PreToolUse` URI guard | 当前 hook manifest 未注册 URI guard |
+| 本地工具检查 | 文件工具的路径是虚拟 URI 时拒绝；shell 命令带虚拟 URI 时附加提示 | `PreToolUse` URI guard，匹配 Read、Glob、Grep、Edit、Write、Bash | `PreToolUse` URI guard 只匹配 Bash，只附加提示；文件编辑走 `apply_patch`，没有路径参数 |
 
 以两份 [Claude Code hooks.json](https://github.com/volcengine/OpenViking/blob/main/examples/claude-code-memory-plugin/hooks/hooks.json) 和 [Codex hooks.json](https://github.com/volcengine/OpenViking/blob/main/examples/codex-memory-plugin/hooks/hooks.json) 为事件注册依据。相同事件名称不保证 payload 或输出格式相同。没有结束事件的宿主必须选择并说明替代提交点，例如 ZCode 在 Stop 提交；不能假装存在一个永远不会执行的 SessionEnd。
 
@@ -276,7 +276,7 @@ proxy 入口不得拥有自己的工具 schema、副本 API client、SSE parser 
 
 ## 7. URI guard、Skill 和诊断
 
-`viking://` 是虚拟 URI，不能交给本地文件或 shell 工具。宿主支持工具执行前检查时，应使用 `evaluateUriGuard()`，只在适配器中定义工具参数和拒绝 envelope。检查器不能扩展成一般命令拦截器；普通文件路径应保持原有行为。宿主不支持该事件时，明确限制并通过 Skill 指引模型使用 MCP，不得宣称具备等效拦截。
+`viking://` 是虚拟 URI。本地文件工具的路径参数是 `viking://` URI 时必然失败，所以宿主支持工具执行前检查时，用 `evaluateUriGuard()` 拒绝这次调用。shell 命令里的 `viking://` URI 可能只是数据（`ov` 命令参数、HTTP 请求体、搜索模式），所以命令照常执行，再通过宿主的模型可见上下文通道附上 `evaluateUriNotice()` 生成的提示；`PreToolUse` 类宿主直接用 `preToolUseOutput()`，它返回拒绝或提示 envelope。适配器中只定义替代工具提示和 envelope。检查器不能扩展成一般命令拦截器；普通文件路径应保持原有行为。宿主不支持该事件时，明确限制并通过 Skill 指引模型使用 MCP，不得宣称具备等效拦截。
 
 共享 Skill 的源文件放在 [`examples/skills/`](https://github.com/volcengine/OpenViking/tree/main/examples/skills/)，通过 `SKILL_TARGETS` 交付，禁止在多个插件副本里分别修改同一段指导。Skill 只描述真实可调用工具和实际能力；自动 hook 已处理的捕获、提交不应再要求模型每轮手动重复执行。不同工具集确有不同操作语义时，可以保留独立 Skill，并说明理由。生成 Skill 时不能在 YAML frontmatter 前插入生成标记。
 
