@@ -33,7 +33,6 @@ from openviking.service.task_events import (
 from openviking.service.task_store import TaskStore
 from openviking.service.task_tracker_concurrency import (
     KeyedAsyncLockPool,
-    OwnerLoopDispatcher,
     StoreIOLimiter,
     run_to_completion,
 )
@@ -182,8 +181,8 @@ def _sanitize_task_result(result: Any) -> Any:
 class TaskTracker:
     """Async task tracker with persistent storage and a process-local cache.
 
-    Mutations are serialized per task on one owner event loop. The thread lock
-    only protects short, synchronous accesses to immutable cache snapshots.
+    Mutations are serialized per task across caller threads and event loops.
+    The thread lock only protects short accesses to immutable cache snapshots.
     """
 
     MAX_TASKS = 10_000
@@ -197,7 +196,6 @@ class TaskTracker:
         self._lock = threading.Lock()
         # The keyed registries provide process-local ordering. A deployment with
         # multiple TaskTracker writers must add store-level revision/CAS first.
-        self._dispatcher = OwnerLoopDispatcher()
         self._task_locks = KeyedAsyncLockPool[str]()
         self._business_locks = KeyedAsyncLockPool[tuple[str, str, str, str]]()
         self._store_io = StoreIOLimiter(max_concurrent_store_io)
@@ -221,7 +219,6 @@ class TaskTracker:
     def attach_work_index(self, work_index: TaskWorkIndex) -> None:
         """Use the QueueManager-owned index as the task lifecycle authority."""
         self._work_index = work_index
-        self._dispatcher.bind_current_loop()
         self._install_work_index_callbacks()
 
     async def restore_work_tasks(self, owners: Dict[str, tuple[str, str]]) -> List[TaskRecord]:
@@ -235,12 +232,10 @@ class TaskTracker:
 
     async def _finalize_before_ack(self, metadata: QueueTaskMetadata) -> None:
         """Persist the terminal state before QueueFS removes the last recovery message."""
-        await self._dispatcher.run(
-            lambda: self._finalize_task_on_owner(
-                metadata.task_id,
-                account_id=metadata.account_id or None,
-                user_id=metadata.user_id or None,
-            )
+        await self._finalize_task(
+            metadata.task_id,
+            account_id=metadata.account_id or None,
+            user_id=metadata.user_id or None,
         )
 
     def is_cancellation_requested(self, task_id: str) -> bool:
@@ -260,7 +255,6 @@ class TaskTracker:
         """
         if self._cleanup_task is not None and not self._cleanup_task.done():
             return
-        self._dispatcher.bind_current_loop()
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
         logger.debug("[TaskTracker] Cleanup loop started")
 
@@ -282,9 +276,6 @@ class TaskTracker:
 
     async def _evict_expired(self) -> None:
         """Remove expired tasks and enforce MAX_TASKS."""
-        await self._dispatcher.run(self._evict_expired_on_owner)
-
-    async def _evict_expired_on_owner(self) -> None:
         now = time.time()
         with self._lock:
             expired_ids = [
@@ -293,7 +284,7 @@ class TaskTracker:
 
         evicted_count = 0
         for task_id in expired_ids:
-            evicted_count += await self._delete_expired_task_on_owner(task_id, now)
+            evicted_count += await self._delete_expired_task(task_id, now)
 
         with self._lock:
             if len(self._tasks) > self.MAX_TASKS:
@@ -311,7 +302,7 @@ class TaskTracker:
             return age > self.TTL_COMPLETED
         return task.status == TaskStatus.FAILED and age > self.TTL_FAILED
 
-    async def _delete_expired_task_on_owner(self, task_id: str, now: float) -> bool:
+    async def _delete_expired_task(self, task_id: str, now: float) -> bool:
         async with self._task_locks.acquire(task_id):
             task = self._cached_task(task_id)
             if task is None or not self._is_expired(task, now):
@@ -390,11 +381,8 @@ class TaskTracker:
             meta=dict(meta or {}),
             auth=dict(auth or {}),
         )
-        return await self._dispatcher.run(lambda: self._create_on_owner(task, task_id is not None))
-
-    async def _create_on_owner(self, task: TaskRecord, check_existing: bool) -> TaskRecord:
         async with self._task_locks.acquire(task.task_id):
-            if check_existing:
+            if task_id is not None:
                 existing = self._cached_task(task.task_id)
                 if existing is not None:
                     if not self._matches_owner(existing, task.account_id, task.user_id):
@@ -434,24 +422,6 @@ class TaskTracker:
         """
         self._validate_owner(account_id, user_id)
         business_key = (account_id, user_id, task_type, resource_id)
-        return await self._dispatcher.run(
-            lambda: self._create_if_no_running_on_owner(
-                business_key,
-                task_type,
-                resource_id,
-                account_id,
-                user_id,
-            )
-        )
-
-    async def _create_if_no_running_on_owner(
-        self,
-        business_key: tuple[str, str, str, str],
-        task_type: str,
-        resource_id: str,
-        account_id: str,
-        user_id: str,
-    ) -> Optional[TaskRecord]:
         async with self._business_locks.acquire(business_key):
             self._merge_loaded_tasks(await self._load_all_from_store(account_id, user_id))
 
@@ -490,17 +460,6 @@ class TaskTracker:
         stage: Optional[str] = None,
     ) -> None:
         """Transition task to RUNNING."""
-        await self._dispatcher.run(
-            lambda: self._start_on_owner(task_id, account_id, user_id, stage)
-        )
-
-    async def _start_on_owner(
-        self,
-        task_id: str,
-        account_id: Optional[str],
-        user_id: Optional[str],
-        stage: Optional[str],
-    ) -> None:
         async with self._task_locks.acquire(task_id):
             task = await self._load_for_update(task_id, account_id, user_id)
             if task and task.status in (TaskStatus.PENDING, TaskStatus.RUNNING):
@@ -521,18 +480,6 @@ class TaskTracker:
         meta: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Update task progress without changing its lifecycle status."""
-        await self._dispatcher.run(
-            lambda: self._update_stage_on_owner(task_id, stage, account_id, user_id, meta)
-        )
-
-    async def _update_stage_on_owner(
-        self,
-        task_id: str,
-        stage: str,
-        account_id: Optional[str],
-        user_id: Optional[str],
-        meta: Optional[Dict[str, Any]],
-    ) -> None:
         async with self._task_locks.acquire(task_id):
             task = await self._load_for_update(task_id, account_id, user_id)
             if task and task.status in _ACTIVE_STATUSES:
@@ -553,22 +500,6 @@ class TaskTracker:
     ) -> None:
         """Persist private state required to resume an active task."""
         self._validate_owner(account_id, user_id)
-        await self._dispatcher.run(
-            lambda: self._update_task_auth_on_owner(
-                task_id,
-                values,
-                account_id,
-                user_id,
-            )
-        )
-
-    async def _update_task_auth_on_owner(
-        self,
-        task_id: str,
-        values: Dict[str, Any],
-        account_id: str,
-        user_id: str,
-    ) -> None:
         async with self._task_locks.acquire(task_id):
             task = await self._load_for_update(task_id, account_id, user_id)
             if task and task.status in _ACTIVE_STATUSES:
@@ -587,17 +518,14 @@ class TaskTracker:
     ) -> None:
         """Persist a child submission before polling so a source retry can resume it."""
 
-        async def record() -> None:
-            async with self._task_locks.acquire(task_id):
-                task = await self._load_for_update(task_id, account_id, user_id)
-                if task is None or task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
-                    raise ValueError("Feishu source task is no longer active")
-                updated = deepcopy(task)
-                updated.meta.setdefault("feishu_responses", {})[entry] = response_id
-                updated.updated_at = self._next_updated_at(task)
-                await self._persist_and_publish("update", updated, previous=task)
-
-        await self._dispatcher.run(record)
+        async with self._task_locks.acquire(task_id):
+            task = await self._load_for_update(task_id, account_id, user_id)
+            if task is None or task.status not in (TaskStatus.PENDING, TaskStatus.RUNNING):
+                raise ValueError("Feishu source task is no longer active")
+            updated = deepcopy(task)
+            updated.meta.setdefault("feishu_responses", {})[entry] = response_id
+            updated.updated_at = self._next_updated_at(task)
+            await self._persist_and_publish("update", updated, previous=task)
 
     async def complete(
         self,
@@ -656,16 +584,6 @@ class TaskTracker:
         user_id: Optional[str] = None,
     ) -> None:
         """Record cancellation reported by the task owner without cancelling its worker."""
-        await self._dispatcher.run(
-            lambda: self._record_cancelled_on_owner(task_id, account_id, user_id)
-        )
-
-    async def _record_cancelled_on_owner(
-        self,
-        task_id: str,
-        account_id: Optional[str],
-        user_id: Optional[str],
-    ) -> None:
         async with self._task_locks.acquire(task_id):
             task = await self._load_for_update(task_id, account_id, user_id)
             if task and task.status in _ACTIVE_STATUSES:
@@ -673,7 +591,7 @@ class TaskTracker:
                 updated.status = TaskStatus.CANCELLING
                 updated.updated_at = self._next_updated_at(task)
                 await self._persist_and_publish("update", updated, previous=task)
-        await self._finalize_task_on_owner(task_id, account_id, user_id)
+        await self._finalize_task(task_id, account_id, user_id)
 
     async def _record_outcome(
         self,
@@ -685,29 +603,6 @@ class TaskTracker:
         error: Optional[str] = None,
         resource_id: Optional[str] = None,
         terminal_status: Optional[TaskStatus] = None,
-    ) -> None:
-        await self._dispatcher.run(
-            lambda: self._record_outcome_on_owner(
-                task_id,
-                account_id,
-                user_id,
-                result=result,
-                error=error,
-                resource_id=resource_id,
-                terminal_status=terminal_status,
-            )
-        )
-
-    async def _record_outcome_on_owner(
-        self,
-        task_id: str,
-        account_id: Optional[str],
-        user_id: Optional[str],
-        *,
-        result: Optional[Dict[str, Any]],
-        error: Optional[str],
-        resource_id: Optional[str],
-        terminal_status: Optional[TaskStatus],
     ) -> None:
         cancellation: asyncio.CancelledError | None = None
         outcome_persisted = False
@@ -739,7 +634,7 @@ class TaskTracker:
         if outcome_persisted:
             try:
                 await run_to_completion(
-                    lambda: self._finalize_task_on_owner(
+                    lambda: self._finalize_task(
                         task_id,
                         account_id=account_id,
                         user_id=user_id,
@@ -748,7 +643,7 @@ class TaskTracker:
             except asyncio.CancelledError as exc:
                 cancellation = cancellation or exc
         else:
-            await self._finalize_task_on_owner(task_id, account_id=account_id, user_id=user_id)
+            await self._finalize_task(task_id, account_id=account_id, user_id=user_id)
         if cancellation is not None:
             raise cancellation
 
@@ -759,16 +654,6 @@ class TaskTracker:
         user_id: Optional[str] = None,
     ) -> Optional[TaskRecord]:
         """Request cooperative cancellation and return the current task snapshot."""
-        return await self._dispatcher.run(
-            lambda: self._cancel_on_owner(task_id, account_id, user_id)
-        )
-
-    async def _cancel_on_owner(
-        self,
-        task_id: str,
-        account_id: Optional[str],
-        user_id: Optional[str],
-    ) -> Optional[TaskRecord]:
         cancellation: asyncio.CancelledError | None = None
         cancellation_persisted = False
         async with self._task_locks.acquire(task_id):
@@ -796,7 +681,7 @@ class TaskTracker:
 
         async def finish_cancellation() -> None:
             self._work_index.cancel_active(task_id)
-            await self._finalize_task_on_owner(
+            await self._finalize_task(
                 task_id,
                 account_id=account_id,
                 user_id=user_id,
@@ -823,16 +708,6 @@ class TaskTracker:
         user_id: Optional[str] = None,
     ) -> None:
         """Apply the task's terminal outcome after all owned work is settled."""
-        await self._dispatcher.run(
-            lambda: self._finalize_task_on_owner(task_id, account_id, user_id)
-        )
-
-    async def _finalize_task_on_owner(
-        self,
-        task_id: str,
-        account_id: Optional[str] = None,
-        user_id: Optional[str] = None,
-    ) -> None:
         if self._work_index.has_work(task_id):
             return
         async with self._task_locks.acquire(task_id):
@@ -893,17 +768,14 @@ class TaskTracker:
         """Load task-owned authentication excluded from public snapshots."""
         self._validate_owner(account_id, user_id)
 
-        async def load() -> Dict[str, Any]:
-            task = self._cached_task(task_id)
-            if task is None:
-                task = await self._load_from_store(task_id, account_id, user_id)
-                if task is not None:
-                    self._publish_task(task)
-            if task is None or not self._matches_owner(task, account_id, user_id):
-                return {}
-            return deepcopy(task.auth)
-
-        return await self._dispatcher.run(load)
+        task = self._cached_task(task_id)
+        if task is None:
+            task = await self._load_from_store(task_id, account_id, user_id)
+            if task is not None:
+                self._publish_task(task)
+        if task is None or not self._matches_owner(task, account_id, user_id):
+            return {}
+        return deepcopy(task.auth)
 
     def forget_account_tasks(self, account_id: str) -> None:
         """Invalidate snapshots after executions settle and account storage is removed."""
@@ -919,11 +791,6 @@ class TaskTracker:
     async def delete_user_tasks(self, account_id: str, user_id: str) -> int:
         """Delete terminal task records for one user from storage and cache."""
         self._validate_owner(account_id, user_id)
-        return await self._dispatcher.run(
-            lambda: self._delete_user_tasks_on_owner(account_id, user_id)
-        )
-
-    async def _delete_user_tasks_on_owner(self, account_id: str, user_id: str) -> int:
         self._merge_loaded_tasks(await self._load_all_from_store(account_id, user_id))
         tasks = [
             task
@@ -998,23 +865,20 @@ class TaskTracker:
         if operation is not None and not re.fullmatch(r"[\w.:-]{1,128}", operation):
             raise ValueError("operation must be a bounded operation identifier")
 
-        async def record() -> None:
-            async with self._task_locks.acquire(task_id):
-                task = await self._load_for_update(task_id, account_id, user_id)
-                if task is None or task.status not in _ACTIVE_STATUSES:
-                    return
-                updated = deepcopy(task)
-                updated.execution_events = append_task_event(
-                    updated.execution_events,
-                    kind=kind,
-                    status=task.status.value,
-                    stage=_sanitize_error(task.stage) if task.stage else None,
-                    operation=operation,
-                )
-                updated.updated_at = self._next_updated_at(task)
-                await self._persist_and_publish("update", updated, previous=task)
-
-        await self._dispatcher.run(record)
+        async with self._task_locks.acquire(task_id):
+            task = await self._load_for_update(task_id, account_id, user_id)
+            if task is None or task.status not in _ACTIVE_STATUSES:
+                return
+            updated = deepcopy(task)
+            updated.execution_events = append_task_event(
+                updated.execution_events,
+                kind=kind,
+                status=task.status.value,
+                stage=_sanitize_error(task.stage) if task.stage else None,
+                operation=operation,
+            )
+            updated.updated_at = self._next_updated_at(task)
+            await self._persist_and_publish("update", updated, previous=task)
 
     def has_work(self, task_id: str) -> bool:
         """Return whether a task still owns durable or active queue work."""
@@ -1047,20 +911,10 @@ class TaskTracker:
             return self._copy(task)
         if account_id is None:
             return None
-        return await self._dispatcher.run(lambda: self._get_on_owner(task_id, account_id, user_id))
-
-    async def _get_on_owner(
-        self,
-        task_id: str,
-        account_id: str,
-        user_id: Optional[str],
-    ) -> Optional[TaskRecord]:
-        task = self._cached_task(task_id)
-        if task is None:
-            task = await self._load_from_store(task_id, account_id, user_id)
-            if task is not None:
-                self._merge_loaded_tasks([task])
-                task = self._cached_task(task_id)
+        task = await self._load_from_store(task_id, account_id, user_id)
+        if task is not None:
+            self._merge_loaded_tasks([task])
+            task = self._cached_task(task_id)
         if task is None or not self._matches_owner(task, account_id, user_id):
             return None
         return self._copy(task)
@@ -1153,28 +1007,6 @@ class TaskTracker:
         include_internal: bool = True,
     ) -> List[TaskRecord]:
         """List tasks with optional filters. Most-recent first. Returns snapshot copies."""
-        return await self._dispatcher.run(
-            lambda: self._list_tasks_on_owner(
-                task_type,
-                status,
-                resource_id,
-                limit,
-                account_id,
-                user_id,
-                include_internal,
-            )
-        )
-
-    async def _list_tasks_on_owner(
-        self,
-        task_type: Optional[str],
-        status: Optional[str],
-        resource_id: Optional[str],
-        limit: Optional[int],
-        account_id: Optional[str],
-        user_id: Optional[str],
-        include_internal: bool,
-    ) -> List[TaskRecord]:
         if account_id is not None:
             self._merge_loaded_tasks(await self._load_all_from_store(account_id, user_id))
         source = self._cache_snapshot()
@@ -1198,22 +1030,6 @@ class TaskTracker:
         user_id: Optional[str] = None,
     ) -> bool:
         """Check if there is already a running task for the given type+resource."""
-        return await self._dispatcher.run(
-            lambda: self._has_running_on_owner(
-                task_type,
-                resource_id,
-                account_id,
-                user_id,
-            )
-        )
-
-    async def _has_running_on_owner(
-        self,
-        task_type: str,
-        resource_id: str,
-        account_id: Optional[str],
-        user_id: Optional[str],
-    ) -> bool:
         if account_id is not None:
             self._merge_loaded_tasks(await self._load_all_from_store(account_id, user_id))
         tasks = self._cache_snapshot()
