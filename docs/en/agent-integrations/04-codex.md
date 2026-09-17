@@ -73,7 +73,7 @@ Credential source: env vars win by default — when any `OPENVIKING_*` credentia
 | `OPENVIKING_URL` / `OPENVIKING_BASE_URL` | — | Full server URL |
 | `OPENVIKING_API_KEY` | — | API key (sent as `Authorization: Bearer`) |
 | `OPENVIKING_CLI_CONFIG_FILE` | `~/.openviking/ovcli.conf` | Active CLI config to use for hooks, MCP, and child `ov` commands |
-| `OPENVIKING_CREDENTIAL_SOURCE` | `auto` | `auto` prefers env-var credentials when any are set; `cli` forces the active ovcli config, `env` forces env vars |
+| `OPENVIKING_CREDENTIAL_SOURCE` | `auto` | `auto` prefers env-var credentials when any are set; `cli` forces the active ovcli config; `env` reads env vars only, and neither config file |
 | `OPENVIKING_NO_AUTO_INJECT` | `false` | Disable fixed session-start profile/background injection without disabling per-prompt recall |
 | `OPENVIKING_PROFILE_TOKEN_BUDGET` | `10000` | CJK-aware token budget for `profile.md` plus `preferences/` and `entities/` indexes |
 | `OPENVIKING_CODEX_IDLE_TTL_MS` | `1800000` | SessionStart idle-TTL sweep threshold |

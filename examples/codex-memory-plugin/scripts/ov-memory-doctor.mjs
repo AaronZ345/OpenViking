@@ -309,7 +309,9 @@ function checkConfig(report, cfg, host) {
   }
 
   const modeEnv = process.env.OPENVIKING_CREDENTIAL_SOURCE || process.env.OPENVIKING_CREDENTIALS_SOURCE;
-  const modeText = cfg.credentialSource === "ovcli" ? "ovcli.conf only (env and ov.conf ignored)" : cfg.credentialSource === "env" ? "environment variables win" : "fell through to ov.conf / defaults";
+  const modeText = cfg.credentialSource === "ovcli" ? "ovcli.conf only (env and ov.conf ignored)"
+    : /^(env|environment)$/i.test(String(modeEnv || "").trim()) ? "environment variables only (both files ignored)"
+      : cfg.credentialSource === "env" ? "environment variables win" : "fell through to ov.conf / defaults";
   report.info(`credential source: ${cfg.credentialSource} — ${modeText}${modeEnv ? ` (OPENVIKING_CREDENTIAL_SOURCE=${modeEnv})` : ""}`);
   if (modeEnv && !/^(env|environment|cli|ovcli|file|config|auto)$/i.test(modeEnv)) report.warn(`OPENVIKING_CREDENTIAL_SOURCE=${modeEnv} is not a recognised value`, "valid: env, cli (ovcli/file/config), auto", "fix or unset it");
 

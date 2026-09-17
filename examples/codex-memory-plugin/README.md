@@ -110,10 +110,10 @@ If you don't want the installer touching your rc, do these things yourself:
 Connection / identity source (applies to hooks, MCP, and `ov` commands run inside Codex):
 
 1. **Default (auto)**: env-var credentials (`OPENVIKING_URL` / `OPENVIKING_BASE_URL`, `OPENVIKING_API_KEY` / `OPENVIKING_BEARER_TOKEN`, `OPENVIKING_ACCOUNT`, `OPENVIKING_USER`, `OPENVIKING_PEER_ID`) win when any is set; otherwise the active `ovcli.conf` is used: `OPENVIKING_CLI_CONFIG_FILE` or `~/.openviking/ovcli.conf`. With no credential env vars set, `ov config switch <name>` changes the active credentials for the CLI, hooks, MCP, and child `ov` commands together.
-2. **Forced**: set `OPENVIKING_CREDENTIAL_SOURCE=cli` to force `ovcli.conf`, or `OPENVIKING_CREDENTIAL_SOURCE=env` to force env-var credentials.
+2. **Forced**: set `OPENVIKING_CREDENTIAL_SOURCE=cli` to force `ovcli.conf`, or `OPENVIKING_CREDENTIAL_SOURCE=env` to read env vars only, with neither config file.
 3. **Fallback**: without credential env vars or an ovcli config, `ov.conf` is used (`server.url` / `server.root_api_key` plus legacy `codex.*` tuning); then `http://127.0.0.1:1933` unauthenticated.
 
-Hooks and the MCP proxy call the same resolver directly, so the model tools and lifecycle hooks follow the same target.
+The MCP proxy loads its connection through the same `loadConfig()` as the hooks, so the model tools and lifecycle hooks use the same target and key, including one set only in ovcli.conf's `plugin.codex` section. Codex passes the proxy only the variables `.mcp.json` lists, and that list covers every variable the connection reads.
 
 Auth is sent as `Authorization: Bearer <api_key>` to both the REST API (used by hooks) and the `/mcp` endpoint (used by the model), and as nothing else — the hooks used to repeat the key as `X-API-Key`, which a gateway of your own can still add if it needs one. `account` and `user` go out as `X-OpenViking-Account` / `X-OpenViking-User` only in trusted mode; an `api_key` server reads both out of the key and ignores the headers.
 

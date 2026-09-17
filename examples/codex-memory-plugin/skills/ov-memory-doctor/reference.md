@@ -25,7 +25,7 @@ and `CODEX_CONFIG_FILE` relocate individual pieces.
 
 ## Config resolution
 
-`OPENVIKING_CREDENTIAL_SOURCE` picks the mode: `env` (env vars only), `cli`
+`OPENVIKING_CREDENTIAL_SOURCE` picks the mode: `env` (env vars only, neither file), `cli`
 (ovcli.conf only — env and ov.conf ignored), default `auto` (env vars win when
 any credential var is set, else ovcli.conf, else ov.conf/defaults). The
 doctor prints the effective mode as `credential source`.
@@ -37,8 +37,10 @@ doctor prints the effective mode as `credential source`.
 | account / user | `OPENVIKING_ACCOUNT` / `OPENVIKING_USER` → `ovcli.conf account/account_id`, `user/user_id` → `ovcli.conf plugin.codex.accountId/userId` → `ovcli.conf plugin.accountId/userId` → `ov.conf codex.accountId/userId` |
 | peer | `OPENVIKING_PEER_ID` → registry → `config.local.json` → `config.json` (`peer.id`) → `ovcli.conf plugin.codex.peerId` → `ovcli.conf plugin.peerId` → `ovcli.conf actor_peer_id/peer_id` → `ov.conf codex.peerId` → derived per `peer.source` unless `OPENVIKING_WORKSPACE_PEER=0` |
 | peer.source | `OPENVIKING_PEER_SOURCE` → registry → `config.local.json` → `config.json` → `ovcli.conf plugin.codex.peerSource` → `ovcli.conf plugin.peerSource` → `ov.conf codex.peerSource` → `git` |
-| auth mode | `OPENVIKING_AUTH_MODE` → `codex.authMode` → `server.auth_mode` → `trusted` when account/user are set, else `api_key` |
+| auth mode | `OPENVIKING_AUTH_MODE` → `ovcli.conf plugin.codex.authMode` → `ovcli.conf plugin.authMode` → `ov.conf codex.authMode` → `ov.conf server.auth_mode` → `trusted` when account/user are set, else `api_key` |
 | tuning | env → registry → `config.local.json` → `config.json` → `ovcli.conf plugin.codex.*` → `ovcli.conf plugin.*` → `ov.conf codex.*` → defaults |
+
+When ovcli.conf names a url, key, identity or peer and no credential variable is set, the chain is pinned to that file: the credential variables are skipped, `api_key` still falls back to `plugin.codex.apiKey` → `plugin.apiKey` → `ov.conf codex.apiKey` but never to `server.root_api_key`, and account/user stop at the `plugin` keys. The MCP proxy resolves this same chain from the variables `.mcp.json` forwards.
 
 `peer.source` decides the derivation. `git` (the default) is the template list `["{git_remote}", "{git_root}"]`: the normalized origin URL (`git@github.com:volcengine/OpenViking.git` → `github.com-volcengine-openviking`, userinfo dropped so an embedded token can never reach the id), else the repository root path (the legacy `[^A-Za-z0-9] → -` rule), else nothing — outside a git repository no peer is sent at all, and what is remembered there goes to the user-level space. `{cwd}` is still a variable but sits in no default chain, and `{dir}` is the workspace root's directory name, empty when the directory is not a workspace. `cwd` is that legacy rule alone (the pre-git behaviour); `none` sends no peer, which is also what `OPENVIKING_WORKSPACE_PEER=0` means. Anything else is a template, or a list of templates tried in order (`"git-{git_remote}"`, `["team-{dir}", "{cwd}"]`); a template naming an empty variable falls through to the next. Derivation is filesystem-only — no `git` subprocess, which also keeps it inside the hook budgets below — so it survives a missing `git` and a dubious-ownership refusal; worktrees converge through `commondir`, a submodule keeps its own identity, and `$HOME` and `/` are never workspace roots. Every clone of one repository shares one peer; a fork's origin differs, so it stays separate, and `gh pr checkout` does not change origin.
 

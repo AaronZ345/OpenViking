@@ -72,7 +72,7 @@ TraeCode CLI 2.0 用户启动 `trae-cli`，并可用 `trae-cli plugin list` 确�
 | `OPENVIKING_URL` / `OPENVIKING_BASE_URL` | — | 完整的服务器 URL |
 | `OPENVIKING_API_KEY` | — | API 密钥（将通过 `Authorization: Bearer` 标头发送） |
 | `OPENVIKING_CLI_CONFIG_FILE` | `~/.openviking/ovcli.conf` | hook、MCP 和 Codex 内部 `ov` 命令共同使用的当前 CLI 配置 |
-| `OPENVIKING_CREDENTIAL_SOURCE` | `auto` | `auto` 下已设置的凭据环境变量优先；设为 `cli` 强制使用激活的 ovcli 配置，设为 `env` 强制使用环境变量 |
+| `OPENVIKING_CREDENTIAL_SOURCE` | `auto` | `auto` 下已设置的凭据环境变量优先；设为 `cli` 强制使用激活的 ovcli 配置；设为 `env` 只读环境变量，两个配置文件都不读 |
 | `OPENVIKING_NO_AUTO_INJECT` | `false` | 关闭会话启动阶段的固定 profile/背景注入，但不关闭逐 prompt 语义召回 |
 | `OPENVIKING_PROFILE_TOKEN_BUDGET` | `10000` | `profile.md` 及 `preferences/`、`entities/` 索引共用的 CJK-aware token 预算 |
 | `OPENVIKING_CODEX_IDLE_TTL_MS` | `1800000` | `SessionStart` 闲置 TTL 清理阈值（毫秒） |

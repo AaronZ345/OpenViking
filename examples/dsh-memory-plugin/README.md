@@ -124,11 +124,13 @@ SDK client opens that standalone stream it stops resolving POST responses, so
 `tools/list` never returns. The proxy owns the transport itself and is
 unaffected.
 
-The bundle's resolved credentials travel to the proxy through the child
-environment, because DSH scrubs credential-shaped names out of the inherited env
-and a subprocess cannot see the Cordis patch; the proxy then applies the usual
-`OPENVIKING_*` → `ovcli.conf` → `ov.conf` chain and reloads when those files
-change.
+The bundle's resolved connection — url, MCP url, key, account, user and auth
+mode — travels to the proxy through the child environment, because DSH scrubs
+credential-shaped names out of the inherited env and a subprocess cannot see the
+Cordis patch. It goes with `OPENVIKING_CREDENTIAL_SOURCE=env`, so the proxy reads
+no config file and reaches the server exactly as the runtime does, including
+with no key when the runtime has none. A changed `ovcli.conf` therefore takes
+effect for the tools when DSH restarts the bundle, as it does for the runtime.
 
 Two consequences follow from the proxy being one process per profile:
 

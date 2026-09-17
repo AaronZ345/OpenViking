@@ -164,7 +164,7 @@ sync / install / pack 负责把这张依赖图完整交付到机器上
 
 ### 4.2 凭据不是普通 workspace 配置
 
-连接和身份必须走 `credentials.mjs` 与 `buildPluginConfig()`。`OPENVIKING_CREDENTIAL_SOURCE` 的 `auto`、`cli`、`env` 控制凭据来源，不能简单套用行为配置优先级。必须验证自定义配置路径、`plugin.<harness>` 覆盖和 `ov config switch` 后 hook 与 MCP 的结果，不能只比较 loader 返回的几个默认字段。
+连接和身份必须走 `credentials.mjs` 的 `resolveConnection()`，`buildPluginConfig()` 就是调用它。`OPENVIKING_CREDENTIAL_SOURCE` 的 `auto`、`cli`、`env` 控制凭据来源，不能简单套用行为配置优先级。MCP proxy 导出 `readProxyConfig(env)`，经与 hook 相同的 loader 解析，再用 `toMcpProxyConfig()` 映射，不手工挑字段，也不直接调用 `credentials.mjs`。宿主若只把白名单里的环境变量交给 MCP 进程，白名单必须覆盖 `MCP_PROXY_ENV_VARS`；宿主若给的是封闭环境，就用 `forwardConnectionEnv()` 转发解析好的连接。新 proxy 必须加入 `mcp-hook-parity.test.mjs`，缺行时该测试会失败。
 
 workspace 文件不得包含 URL、API key、用户凭据等禁止字段，也不做环境变量插值。规则由 [`workspace-config.mjs`](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/workspace-config.mjs) 执行，不在每个宿主增加自己的白名单。安装器不得把解析后的 API key 固化到 `.mcp.json`，也不得替换用户已选择的云端连接。
 
@@ -397,7 +397,7 @@ PR 必须包含应提交的最新生成物，并检查新出现但未跟踪的�
 | 验证范围 | 至少覆盖的真实行为 | 现有入口 |
 | --- | --- | --- |
 | 配置与开关 | 分层覆盖、别名冲突、非法值、未配置标记、关闭后无新网络副作用 | `plugin-config.test.mjs`、`plugin-known-keys.test.mjs`、宿主 config 测试 |
-| 凭据与 peer | hook/MCP 的请求身份一致；自定义路径、profile 切换、多 workspace | `credentials.test.mjs`、`wire-headers.test.mjs`、`mcp-proxy-config.test.mjs` |
+| 凭据与 peer | hook/MCP 的请求身份一致；自定义路径、profile 切换、多 workspace | `credentials.test.mjs`、`mcp-hook-parity.test.mjs`、`wire-headers.test.mjs`、`mcp-proxy-config.test.mjs` |
 | Hook 输出 | 真实 payload、单次合法输出、空结果、未知/缺失字段、错误路径 | `agent-hook-runtime.test.mjs`、宿主事件测试 |
 | Recall | 开关、bypass、空结果、服务端兼容、压缩失败、可读 URI | `recall-core.test.mjs`、宿主 recall 测试 |
 | Capture | 完整文本和工具记录、重复事件、重复文本、嵌套工具、部分成功、截短恢复 | `capture-utils.test.mjs`、`batch-send.test.mjs`、宿主 transcript 测试 |

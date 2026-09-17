@@ -164,7 +164,7 @@ Switches must govern actual behavior. Disabling recall prevents automatic recall
 
 ### 4.2 Credentials are not ordinary workspace settings
 
-Resolve connections and identity through `credentials.mjs` and `buildPluginConfig()`. The `auto`, `cli`, and `env` modes of `OPENVIKING_CREDENTIAL_SOURCE` select credential sources; they do not simply follow the behavior-setting precedence above. Verify custom configuration paths, `plugin.<harness>` overrides, and hook/MCP behavior after `ov config switch`. Comparing a few default loader fields is insufficient.
+Resolve connections and identity through `resolveConnection()` in `credentials.mjs`, which `buildPluginConfig()` calls. The `auto`, `cli`, and `env` modes of `OPENVIKING_CREDENTIAL_SOURCE` select credential sources; they do not simply follow the behavior-setting precedence above. An MCP proxy exports `readProxyConfig(env)`, resolves through the same loader as its hooks, and maps the result with `toMcpProxyConfig()`; it never picks fields by hand or calls `credentials.mjs` itself. If the host hands MCP servers an allowlisted environment, the allowlist must cover `MCP_PROXY_ENV_VARS`; if it hands them a closed one, forward the resolved connection with `forwardConnectionEnv()`. Add every new proxy to `mcp-hook-parity.test.mjs`, which fails until it has a row.
 
 Workspace files must not contain forbidden connection or credential fields such as URLs, API keys, and user credentials, and must not interpolate environment variables. [`workspace-config.mjs`](https://github.com/volcengine/OpenViking/blob/main/examples/memory-plugin-shared/lib/workspace-config.mjs) owns this rule; do not add a separate allowlist per host. Installers must not write resolved API keys into `.mcp.json` or replace the user's selected cloud connection.
 
@@ -397,7 +397,7 @@ Put common helpers in [`testing/support.mjs`](https://github.com/volcengine/Open
 | Area | Behavior to verify | Existing entrypoints |
 | --- | --- | --- |
 | Configuration and switches | Layer precedence, alias conflicts, invalid values, configured flags, no new network effects when disabled | `plugin-config.test.mjs`, `plugin-known-keys.test.mjs`, host config tests |
-| Credentials and peers | Matching hook/MCP request identity; custom paths, profile switching, multiple workspaces | `credentials.test.mjs`, `wire-headers.test.mjs`, `mcp-proxy-config.test.mjs` |
+| Credentials and peers | Matching hook/MCP request identity; custom paths, profile switching, multiple workspaces | `credentials.test.mjs`, `mcp-hook-parity.test.mjs`, `wire-headers.test.mjs`, `mcp-proxy-config.test.mjs` |
 | Hook output | Real payloads, one valid response, empty results, missing/unknown fields, failures | `agent-hook-runtime.test.mjs`, host event tests |
 | Recall | Switches, bypass, empty results, server compatibility, compression failure, readable URIs | `recall-core.test.mjs`, host recall tests |
 | Capture | Complete text/tools, repeated events and text, nested tools, partial success, truncation recovery | `capture-utils.test.mjs`, `batch-send.test.mjs`, host transcript tests |

@@ -16,6 +16,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { MCP_PROXY_ENV_VARS } from "./shared/mcp-proxy-config.mjs";
+
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const pluginDir = resolve(scriptsDir, "..");
 const repoRoot = resolve(scriptsDir, "..", "..", "..");
@@ -203,11 +205,21 @@ test(".mcp.json starts the stdio MCP proxy from the plugin root", () => {
   execFileSync("node", ["--check", join(pluginDir, "servers", "mcp-proxy.mjs")], { stdio: "pipe" });
 });
 
+test(".mcp.json forwards every env var that changes what the MCP proxy sends", () => {
+  // Hooks inherit Codex's whole environment, but a stdio MCP server only gets
+  // the names listed here; a missing one is a setting the proxy never sees.
+  const server = readJson(join(pluginDir, ".mcp.json")).mcpServers[PLUGIN_NAME];
+  const forwarded = new Set(server.env_vars);
+  for (const name of MCP_PROXY_ENV_VARS) {
+    assert.ok(forwarded.has(name), `.mcp.json env_vars must forward ${name}`);
+  }
+});
+
 test("Codex MCP entrypoint forwards only native OpenViking tools", () => {
   const entrypoint = readFileSync(join(pluginDir, "servers", "mcp-proxy.mjs"), "utf-8");
   assert.doesNotMatch(entrypoint, /createExperienceToolProvider/);
   assert.doesNotMatch(entrypoint, /localToolProvider/);
-  assert.match(entrypoint, /resolveMcpActorPeerId\(cfg\)/);
+  assert.match(entrypoint, /toMcpProxyConfig\(/);
   assert.doesNotMatch(entrypoint, /resolveEffectivePeerId|process\.cwd\(\)/);
 });
 
