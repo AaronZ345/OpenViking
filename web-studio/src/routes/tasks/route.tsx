@@ -53,6 +53,7 @@ import { normalizeTaskStatus } from '#/routes/tasks/-lib/task-record'
 import type { TaskRecord } from '#/routes/tasks/-lib/task-record'
 import { formatTaskDuration, getTaskDate } from '#/routes/tasks/-lib/task-time'
 import { fetchTasks, MAX_TASKS } from './-lib/task-list'
+import { localizeSkippedCommit } from './-lib/localize-commit-result'
 import type { TaskStatusFilter, TaskTypeFilter } from './-lib/task-list'
 import { getTaskPipelineGroups } from './-lib/task-pipeline'
 
@@ -135,13 +136,8 @@ function TasksRoute() {
       // ── 1. task_type 精确匹配优先（不受 URI 前缀干扰）──────────────────────
       if (task.task_type === 'session_commit') {
         const res = await commitSession(task.resource_id)
-        const resAny = res as any
-        if (resAny?.result?.reason === 'no_messages' || resAny?.reason === 'no_messages') {
-          toast.info(
-            i18n.language.startsWith('zh')
-              ? '该会话无未提交消息，已无需重复入队'
-              : 'Session has no pending uncommitted messages',
-          )
+        if (res.status === 'skipped' || res.reason === 'no_messages') {
+          return { res, task, skippedReason: res.reason ?? 'skipped' }
         }
         return { res, task }
       }
@@ -197,7 +193,11 @@ function TasksRoute() {
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : String(error))
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      if ('skippedReason' in result && result.skippedReason) {
+        toast.info(localizeSkippedCommit(result.skippedReason, t))
+        return
+      }
       toast.success(
         i18n.language.startsWith('zh')
           ? '重新入队请求已发送，后端正在处理新任务！'
