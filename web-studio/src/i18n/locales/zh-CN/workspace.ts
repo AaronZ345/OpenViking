@@ -441,6 +441,29 @@ const workspace = {
       allStatuses: '全部状态',
       clear: '清除筛选',
     },
+    actions: {
+      retrigger: '重新发起任务',
+    },
+    pipeline: {
+      steps: '工序进度',
+      duration: '执行耗时 / 已用时长',
+      count: '{{count}} 项',
+      status: {
+        completed: '已完成',
+        running: '进行中',
+        failed: '失败',
+        pending: '等待中',
+      },
+      step: {
+        sessionPersistence: '会话状态持久化',
+        sessionCommit: '会话提交',
+        connectorAuth: '连接器鉴权',
+        resourceFetching: '资源拉取',
+        externalParse: '外部解析',
+        semantic: '语义处理',
+        embedding: '嵌入向量',
+      },
+    },
     pagination: {
       next: '下一页',
       page: '第 {{page}} 页',

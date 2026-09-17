@@ -308,7 +308,7 @@ function TasksRoute() {
             type="button"
             disabled={isRetrying}
             className="ml-1 inline-flex items-center justify-center rounded p-0.5 hover:bg-white/25 active:scale-95 transition-all cursor-pointer text-destructive-foreground disabled:opacity-50"
-            title={i18n.language.startsWith('zh') ? '重新发起任务' : 'Re-trigger Task'}
+            title={t('actions.retrigger')}
             onClick={(e) => {
               e.stopPropagation()
               retryMutation.mutate(task)
@@ -338,7 +338,7 @@ function TasksRoute() {
       | { type: 'serial'; step: StepItem }
       | { type: 'parallel'; steps: StepItem[] }
 
-    const groups = getTaskPipelineGroups(task, i18n.language)
+    const groups = getTaskPipelineGroups(task, t)
 
     return (
       <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 min-w-[210px]">
@@ -909,7 +909,7 @@ function TasksRoute() {
                       <TableCell>{renderQueuePipeline(task)}</TableCell>
                       <TableCell>{renderStatus(task)}</TableCell>
                       <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-                        {formatTaskDuration(task, i18n.language.startsWith('zh'))}
+                        {formatTaskDuration(task)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right text-muted-foreground">
                         {formatTime(task)}
