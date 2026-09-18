@@ -70,6 +70,17 @@ class _MemoryTransferBackend(VikingVectorIndexBackend):
     def mode(self) -> str:
         return self.backend_mode
 
+    def _get_backend_for_context(self, ctx):
+        del ctx
+        return SimpleNamespace(strict_query=self._query)
+
+    async def _query(self, *, filter, limit=10, offset=0, output_fields=None):
+        del output_fields
+        self.scroll_filters.append(filter)
+        return [
+            dict(record) for record in self.records.values() if _matches_filter(filter, record)
+        ][offset : offset + limit]
+
     async def scroll(
         self,
         filter=None,
@@ -524,6 +535,89 @@ async def test_transfer_scan_emits_supported_aggregate_request(
 
 
 @pytest.mark.asyncio
+async def test_legacy_transfer_reads_use_private_adapter_query_and_fetch(monkeypatch):
+    source = "viking://resources/source.md"
+    backend = _MemoryTransferBackend([])
+    adapter = VikingDBPrivateCollectionAdapter(
+        host="unused.invalid",
+        headers=None,
+        project_name="test",
+        collection_name="context",
+        index_name="default",
+    )
+    collection = VikingDBCollection(
+        host="unused.invalid", meta_data={"ProjectName": "test", "CollectionName": "context"}
+    )
+    adapter._collection = Collection(collection)
+    account_backend = _SingleAccountBackend(VectorDBBackendConfig(), "acct", shared_adapter=adapter)
+    monkeypatch.setattr(backend, "_get_backend_for_context", lambda ctx: account_backend)
+    monkeypatch.setattr(
+        backend,
+        "_strict_transfer_get",
+        VikingVectorIndexBackend._strict_transfer_get.__get__(backend),
+    )
+    monkeypatch.setattr(
+        "openviking.storage.vectordb_adapters.base.get_openviking_config",
+        lambda: SimpleNamespace(embedding=SimpleNamespace(dimension=2)),
+    )
+    paths = []
+
+    def data_post(path, data):
+        paths.append(path)
+        if path == "/api/vikingdb/data/search/vector":
+            assert data["limit"] == 100 and data["offset"] == 0
+            assert len(data["dense_vector"]) == 2
+            assert "field" not in data and "order" not in data
+            assert data["filter"] == {
+                "op": "and",
+                "conds": [
+                    {"op": "must", "field": "account_id", "conds": ["acct"]},
+                    {
+                        "op": "and",
+                        "conds": [
+                            {"op": "must", "field": "account_id", "conds": ["acct"]},
+                            {
+                                "op": "must",
+                                "field": "uri",
+                                "conds": ["/resources/source.md"],
+                                "para": "-d=0",
+                            },
+                        ],
+                    },
+                ],
+            }
+            return {
+                "data": [
+                    {"id": "file", "fields": {"uri": "/resources/source.md"}},
+                    {"id": "gone", "fields": {"uri": "/resources/source.md"}},
+                ]
+            }
+        if path == "/api/vikingdb/data/fetch_in_collection":
+            assert data["ids"] == ["file", "gone"]
+            return {
+                "fetch": [
+                    {
+                        "id": "file",
+                        "fields": {
+                            "uri": "/resources/source.md",
+                            "account_id": "acct",
+                            "vector": [0.1, 0.2],
+                        },
+                    }
+                ],
+                "ids_not_exist": ["gone"],
+            }
+        raise AssertionError(f"Legacy reads must not use aggregate or scalar search: {path}")
+
+    monkeypatch.setattr(collection, "_data_post", data_post)
+    records, _ = await backend._read_uri_transfer_entries(
+        _ctx(), [source], include_full_records=True
+    )
+    assert [(r["id"], r["uri"], r["vector"]) for r in records] == [("file", source, [0.1, 0.2])]
+    assert paths == ["/api/vikingdb/data/search/vector", "/api/vikingdb/data/fetch_in_collection"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("transfer_method", ["copy_uri_mapping", "update_uri_mapping"])
 async def test_uri_mapping_overwrites_exact_target_and_leaves_independent_chunks(
     transfer_method,
@@ -597,15 +691,15 @@ async def test_merge_target_scan_excludes_unrelated_subtrees(
     backend = _RealAclMemoryTransferBackend(source_records + old_records + unique_records)
     backend.acl_manager = None
     backend.backend_mode = backend_mode
-    original_page = backend._strict_transfer_page
+    original_query = backend._query
     read_ids: list[str] = []
 
-    async def counted_page(*args, **kwargs):
-        page, cursor = await original_page(*args, **kwargs)
+    async def counted_query(*args, **kwargs):
+        page = await original_query(*args, **kwargs)
         read_ids.extend(str(record["id"]) for record in page)
-        return page, cursor
+        return page
 
-    monkeypatch.setattr(backend, "_strict_transfer_page", counted_page)
+    monkeypatch.setattr(backend, "_query", counted_query)
     result = await getattr(backend, transfer_method)(
         _ctx(), source, target, recursive=True, source_uris=[source, f"{source}/a.md"]
     )
@@ -615,6 +709,22 @@ async def test_merge_target_scan_excludes_unrelated_subtrees(
     assert result.written == 2
     assert not set(backend.records).intersection(record["id"] for record in old_records)
     assert all(backend.records[record["id"]] == record for record in unique_records)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transfer_method", ["copy_uri_mapping", "update_uri_mapping"])
+async def test_direct_recursive_transfer_keeps_complete_target_scan(transfer_method):
+    source, target = "viking://resources/source", "viking://resources/target"
+    old_ids = [f"old-{i}" for i in range(101)]
+    backend = _RealAclMemoryTransferBackend(
+        [_record("source", source)] + [_record(record_id, target) for record_id in old_ids]
+    )
+    backend.acl_manager = None
+
+    await getattr(backend, transfer_method)(_ctx(), source, target, recursive=True)
+
+    assert not set(old_ids).intersection(backend.records)
+    assert len(_records_under(backend, target)) == 1
 
 
 @pytest.mark.asyncio
