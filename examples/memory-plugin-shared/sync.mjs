@@ -104,7 +104,9 @@ export const SKILL_TARGETS = [
     dir: join(ROOT, "examples", "dsh-memory-plugin", "skills"),
     committed: true,
   },
-  // Only the two harnesses that ship the experience workflow today.
+  // The harnesses that ship the experience workflow today. agent-plugins has
+  // no hooks and so no session capture: its copy only retrieves and applies
+  // Experience, and its reads feed no trajectory back to the server.
   {
     skill: "ov-experience-memory",
     dir: join(ROOT, "examples", "codex-memory-plugin", "skills"),
@@ -113,6 +115,11 @@ export const SKILL_TARGETS = [
   {
     skill: "ov-experience-memory",
     dir: join(ROOT, "examples", "claude-code-memory-plugin", "skills"),
+    committed: true,
+  },
+  {
+    skill: "ov-experience-memory",
+    dir: join(ROOT, "agent-plugins", "skills"),
     committed: true,
   },
 ];

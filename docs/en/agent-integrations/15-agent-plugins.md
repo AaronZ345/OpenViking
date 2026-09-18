@@ -14,6 +14,7 @@ agent-plugins/
 │   ├── mcp-proxy.mjs                    # stdio -> streamable-HTTP proxy to the server's /mcp
 │   └── shared/                          # generated from examples/memory-plugin-shared/lib
 ├── skills/openviking-memory/SKILL.md    # teaches the model the recall + persist loop
+├── skills/ov-experience-memory/SKILL.md # retrieve and apply prior task Experience
 └── plugin.test.mjs                      # node --test conformance checks
 ```
 
@@ -24,7 +25,7 @@ Zero npm dependencies — the proxy and the tests run on the Node.js standard li
 1. Have an OpenViking server reachable. If you don't, follow the [Quickstart](../getting-started/02-quickstart.md); the default local endpoint is `http://127.0.0.1:1933`.
 2. Point your Agent-Plugins-conforming client at the `agent-plugins/` directory. Each client has its own install command or plugin directory — consult its docs. On load the client will:
    - register the `openviking` MCP server from `mcp.json`, running `node <plugin>/servers/mcp-proxy.mjs` over stdio;
-   - discover the `openviking-memory` skill from `skills/`.
+   - discover the `openviking-memory` and `ov-experience-memory` skills from `skills/`.
 3. Configure credentials (below) and start a session. The model gains `find` / `search` / `read` / `list` / `grep` / `glob` / `remember` / `add_resource` / `forget` / `health`, plus `tree` / `write` / `edit` on recent servers.
 
 ## Why a stdio proxy instead of a `streamable-http` entry
@@ -62,6 +63,8 @@ Debugging: set `OPENVIKING_DEBUG=1` to write JSON lines to `~/.openviking/logs/a
 Agent Plugins 1.0 covers skills and MCP servers only — hooks, commands, and agents are deliberately outside the version, because their semantics differ too much between clients. So this package is the **portable recall + write surface**, driven by the model rather than by lifecycle events: automatic conversation capture and automatic pre-prompt recall are out of scope here.
 
 The bundled `openviking-memory` skill compensates by teaching the model the full loop itself — recall at task start with `find` / `search` + `read` (using `search` with `mode="context"` when assembled context is useful), then persist durable facts with `remember` / `write` / `edit`, with priority and safety rules for using retrieved memory.
+
+The bundled `ov-experience-memory` skill has the model search `viking://~/memories/experiences` before executable work and read the Experience files that apply. Here it is retrieval-only: with no session capture, its reads are not linked back to the Experience they used and produce no new trajectories. The Experience it finds comes from harnesses that do capture sessions.
 
 **If your harness has its own hook system, prefer the dedicated plugin.** Hook-driven recall and capture happen without the model spending tool calls or deciding to remember, which is both cheaper and more reliable than the skill-driven loop. Use this Agent Plugins package for harnesses that have no hooks, or when you want one package that works across many clients.
 

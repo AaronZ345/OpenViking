@@ -14,6 +14,7 @@ agent-plugins/
 │   ├── mcp-proxy.mjs                    # stdio -> streamable-HTTP 代理，转发到服务端 /mcp
 │   └── shared/                          # 由 examples/memory-plugin-shared/lib 生成
 ├── skills/openviking-memory/SKILL.md    # 教模型完成「召回 + 沉淀」闭环
+├── skills/ov-experience-memory/SKILL.md # 检索并应用以往任务的 Experience
 └── plugin.test.mjs                      # node --test 规范一致性校验
 ```
 
@@ -24,7 +25,7 @@ agent-plugins/
 1. 准备一个可访问的 OpenViking 服务。还没有的话，先按 [快速开始](../getting-started/02-quickstart.md) 部署；本地默认端点是 `http://127.0.0.1:1933`。
 2. 让你的 Agent Plugins 客户端指向 `agent-plugins/` 目录。各客户端的安装命令或插件目录不同，请查阅其文档。加载时客户端会：
    - 按 `mcp.json` 注册名为 `openviking` 的 MCP server，以 stdio 方式运行 `node <plugin>/servers/mcp-proxy.mjs`；
-   - 从 `skills/` 发现 `openviking-memory` 技能。
+   - 从 `skills/` 发现 `openviking-memory` 和 `ov-experience-memory` 技能。
 3. 配置凭据（见下节）后开始会话。模型即可使用 `find` / `search` / `read` / `list` / `grep` / `glob` / `remember` / `add_resource` / `forget` / `health`，较新的服务端还提供 `tree` / `write` / `edit`。
 
 ## 为什么用 stdio 代理，而不是 `streamable-http`
@@ -62,6 +63,8 @@ OpenViking 服务端本身在 `/mcp` 上就是 streamable HTTP，但 `mcp.json` 
 Agent Plugins 1.0 只覆盖 skills 和 MCP servers；hooks、commands、agents 被有意排除在本版本之外，因为它们在各客户端之间语义差异太大。因此这个包提供的是**可移植的召回 + 写入能力面**，由模型驱动而非生命周期事件驱动：**自动会话捕获和 prompt 前自动召回不在此范围内**。
 
 作为补偿，内置的 `openviking-memory` 技能直接把这套闭环教给模型 —— 任务开始时用 `find` / `search` + `read` 召回（需要组装上下文时使用 `search` 的 `mode="context"`），过程中和结束后用 `remember` / `write` / `edit` 沉淀，并给出使用召回内容时的优先级与安全规则。
+
+内置的 `ov-experience-memory` 技能让模型在执行类任务前检索 `viking://~/memories/experiences`，并读取适用的 Experience 文件。在这个包里它只做检索：没有会话捕获，这些读取不会关联回所用的 Experience，也不会产生新的轨迹。它检索到的 Experience 来自会捕获会话的 harness。
 
 **如果你的 harness 支持 hooks 机制，推荐使用专属插件。** hook 驱动的召回与捕获不需要模型花费工具调用、也不依赖模型「想起来要记」，比技能驱动的闭环更省 token、也更可靠。本 Agent Plugins 包适用于没有 hooks 的 harness，或你希望用同一个包覆盖多个客户端的场景。
 
