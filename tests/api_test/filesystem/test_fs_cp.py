@@ -14,6 +14,30 @@ class TestFsCp:
             write = api_client.fs_write(source, content, mode="create", wait=True)
             assert write.status_code == 200, write.text
 
+            if os.getenv("HAS_SECRETS", "true").lower() == "true":
+                write_result = write.json().get("result", {})
+                preparation_error = f"Source index preparation failed: {write.text}"
+                assert write_result.get("vector_status") == "complete", preparation_error
+                assert write_result.get("semantic_status") != "failed", preparation_error
+                queue_status = write_result.get("queue_status") or {}
+                for queue_name in ("Semantic", "Embedding"):
+                    queue_result = queue_status.get(queue_name, {})
+                    assert not queue_result.get("error_count", 0), preparation_error
+                    assert not queue_result.get("errors"), preparation_error
+
+                source_index = api_client.find(
+                    query="",
+                    target_uri=source,
+                    filter={"op": "must", "field": "uri", "conds": [source]},
+                    limit=5,
+                )
+                source_index_error = (
+                    f"Source index missing before cp: write={write.text}; find={source_index.text}"
+                )
+                assert source_index.status_code == 200, source_index_error
+                resources = source_index.json().get("result", {}).get("resources", [])
+                assert any(item.get("uri") == source for item in resources), source_index_error
+
             copied = api_client.fs_cp(source, target)
             assert copied.status_code == 200, copied.text
             result = copied.json().get("result", {})
