@@ -307,6 +307,12 @@ async def test_copy_uri_mapping_scans_real_local_path_records(tmp_path):
         assert result.scanned == 1
         copied = await backend.get_context_by_uri(target, ctx=_ctx())
         assert [record["uri"] for record in copied] == [target]
+
+        first_page, cursor = await backend.scroll(limit=1, ctx=_ctx())
+        assert cursor is not None
+        last_page, cursor = await backend.scroll(limit=2, cursor=cursor, ctx=_ctx())
+        assert cursor is None
+        assert [record["uri"] for record in first_page + last_page] == [source, target]
     finally:
         await backend.close()
 
@@ -370,7 +376,7 @@ async def test_get_l2_abstracts_by_uris_uses_strict_batched_lookup():
 
 
 @pytest.mark.asyncio
-async def test_strict_scroll_propagates_real_adapter_query_failure():
+async def test_scroll_propagates_real_adapter_query_failure():
     backend = _SingleAccountBackend.__new__(_SingleAccountBackend)
     backend._bound_account_id = "acct"
     backend._async_adapter = SimpleNamespace(
@@ -378,7 +384,7 @@ async def test_strict_scroll_propagates_real_adapter_query_failure():
     )
 
     with pytest.raises(RuntimeError, match="injected query failure"):
-        await backend.strict_scroll(limit=100, output_fields=["id", "uri"])
+        await backend.scroll(limit=100, output_fields=["id", "uri"])
 
 
 @pytest.mark.asyncio
