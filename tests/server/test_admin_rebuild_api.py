@@ -3089,58 +3089,6 @@ async def test_reindex_global_namespace_partitions_user_and_resources(monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_reindex_skill_l2_falls_back_to_skill_content_when_abstract_missing(monkeypatch):
-    from openviking.service.reindex_executor import ReindexExecutor, _ReindexCounters
-
-    class FakeVikingFS:
-        async def exists(self, uri, ctx=None):
-            return True
-
-    seen = {}
-
-    async def fake_read_directory_abstract(self, uri, *, ctx):
-        return "skill abstract"
-
-    async def fake_read_directory_overview(self, uri, *, ctx):
-        return ""
-
-    async def fake_fetch_existing_record(self, *, uri, level, ctx):
-        return None
-
-    async def fake_safe_read_text(self, uri, *, ctx):
-        return "# Skill Title\n\nDo things well."
-
-    async def fake_upsert_context(self, **kwargs):
-        seen[kwargs["uri"]] = kwargs
-
-    async def fake_skill_meta(self, *, uri, abstract, ctx):
-        return {"name": "my_skill", "description": abstract}
-
-    monkeypatch.setattr("openviking.service.reindex_executor.get_viking_fs", lambda: FakeVikingFS())
-    monkeypatch.setattr(ReindexExecutor, "_read_directory_abstract", fake_read_directory_abstract)
-    monkeypatch.setattr(ReindexExecutor, "_read_directory_overview", fake_read_directory_overview)
-    monkeypatch.setattr(ReindexExecutor, "_fetch_existing_record", fake_fetch_existing_record)
-    monkeypatch.setattr(ReindexExecutor, "_safe_read_text", fake_safe_read_text)
-    monkeypatch.setattr(ReindexExecutor, "_skill_meta", fake_skill_meta)
-    monkeypatch.setattr(ReindexExecutor, "_upsert_context", fake_upsert_context)
-
-    service = ReindexExecutor()
-    counters = _ReindexCounters()
-    ctx = RequestContext(
-        user=UserIdentifier(account_id="test", user_id="alice"),
-        role=Role.ROOT,
-    )
-
-    await service._reindex_skill_vectors(
-        uri="viking://user/skills/my_skill",
-        counters=counters,
-        ctx=ctx,
-    )
-
-    assert seen["viking://user/skills/my_skill/SKILL.md"]["abstract"] == "skill abstract"
-
-
-@pytest.mark.asyncio
 async def test_reindex_skill_vectors_non_recursive_skips_skill_detail(monkeypatch):
     from openviking.service.reindex_executor import ReindexExecutor, _ReindexCounters
 
@@ -3162,15 +3110,17 @@ async def test_reindex_skill_vectors_non_recursive_skips_skill_detail(monkeypatc
 
     upserts = []
 
-    async def fake_upsert_context(self, **kwargs):
-        upserts.append((kwargs["uri"], kwargs["level"]))
+    async def fake_vectorize_directory(uri, abstract, overview, **kwargs):
+        upserts.extend([(uri, ContextLevel.ABSTRACT), (uri, ContextLevel.OVERVIEW)])
 
     monkeypatch.setattr("openviking.service.reindex_executor.get_viking_fs", lambda: FakeVikingFS())
     monkeypatch.setattr(ReindexExecutor, "_read_directory_abstract", fake_read_directory_abstract)
     monkeypatch.setattr(ReindexExecutor, "_read_directory_overview", fake_read_directory_overview)
     monkeypatch.setattr(ReindexExecutor, "_safe_read_text", fake_safe_read_text)
     monkeypatch.setattr(ReindexExecutor, "_skill_meta", fake_skill_meta)
-    monkeypatch.setattr(ReindexExecutor, "_upsert_context", fake_upsert_context)
+    monkeypatch.setattr(
+        "openviking.service.reindex_executor.vectorize_directory_meta", fake_vectorize_directory
+    )
 
     counters = _ReindexCounters()
     ctx = RequestContext(

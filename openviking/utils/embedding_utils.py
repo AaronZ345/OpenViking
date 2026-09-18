@@ -365,6 +365,9 @@ async def vectorize_directory_meta(
     ingest_options: IngestOptions | None = None,
     creator_acl_grant: CreatorAclGrant | None = None,
     include_abstract: bool = True,
+    meta: Optional[Dict[str, Any]] = None,
+    *,
+    content_is_body: bool = False,
 ) -> None:
     """
     Vectorize directory metadata (.abstract.md and .overview.md).
@@ -374,8 +377,11 @@ async def vectorize_directory_meta(
     # Callers may provide either freshly generated bodies or raw sidecar bytes
     # read during reindex/import. Normalize at this shared boundary so protected
     # operational metadata never leaks into vector text or rerank scalars.
-    abstract = body_for_preview(abstract)
-    overview = body_for_preview(overview)
+    # Skill producers have already extracted the bodies. Their Markdown may
+    # itself start with YAML frontmatter, which must not be parsed as OKF again.
+    if not content_is_body:
+        abstract = body_for_preview(abstract)
+        overview = body_for_preview(overview)
     first_enqueue_error: Optional[Exception] = None
     try:
         if not ctx:
@@ -409,13 +415,12 @@ async def vectorize_directory_meta(
                 user=ctx.user,
                 account_id=ctx.account_id,
                 owner_space=owner_space,
+                meta=meta,
             )
             context_abstract.set_vectorize(
                 Vectorize(text=embedding_text_for_body(ContextLevel.ABSTRACT, uri, abstract))
             )
-            msg_abstract = EmbeddingMsgConverter.from_context(
-                context_abstract, creator_acl_grant
-            )
+            msg_abstract = EmbeddingMsgConverter.from_context(context_abstract, creator_acl_grant)
             _apply_scalar_overrides(
                 msg_abstract,
                 (scalar_overrides or {}).get(int(ContextLevel.ABSTRACT.value)),
@@ -456,13 +461,12 @@ async def vectorize_directory_meta(
                 user=ctx.user,
                 account_id=ctx.account_id,
                 owner_space=owner_space,
+                meta=meta,
             )
             context_overview.set_vectorize(
                 Vectorize(text=embedding_text_for_body(ContextLevel.OVERVIEW, uri, overview))
             )
-            msg_overview = EmbeddingMsgConverter.from_context(
-                context_overview, creator_acl_grant
-            )
+            msg_overview = EmbeddingMsgConverter.from_context(context_overview, creator_acl_grant)
             _apply_scalar_overrides(
                 msg_overview,
                 (scalar_overrides or {}).get(int(ContextLevel.OVERVIEW.value)),

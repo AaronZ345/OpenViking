@@ -594,7 +594,9 @@ async def test_vectorize_directory_meta_l1_abstract_is_overview(monkeypatch):
     }
     await embedding_utils.vectorize_directory_meta(
         uri=uri,
-        abstract=render_abstract_overview(ContextLevel.ABSTRACT, uri, "Visible abstract.", metadata),
+        abstract=render_abstract_overview(
+            ContextLevel.ABSTRACT, uri, "Visible abstract.", metadata
+        ),
         overview=render_abstract_overview(ContextLevel.OVERVIEW, uri, overview, metadata),
         ctx=DummyReq(),
     )
@@ -1073,3 +1075,35 @@ async def test_vectorize_directory_meta_truncates_oversized_abstract(monkeypatch
         abstract = item.context_data["abstract"]
         assert len(abstract.encode("utf-8")) <= embedding_utils._ABSTRACT_MAX_BYTES
         assert abstract.encode("utf-8").decode("utf-8") == abstract
+
+
+@pytest.mark.asyncio
+async def test_skill_directory_body_frontmatter_is_not_parsed_twice(monkeypatch):
+    from openviking.storage.abstract_overview import (
+        AbstractOverviewFormatError,
+        render_abstract_overview,
+    )
+
+    queue = DummyQueue()
+    monkeypatch.setattr(embedding_utils, "get_queue_manager", lambda: DummyQueueManager(queue))
+    monkeypatch.setattr(embedding_utils, "get_viking_fs", lambda: DummyFS("ignored"))
+    uri = "viking://agent/skills/demo"
+    body = "---\nname: demo\ndescription: Tool instructions\n---\n\n# Parameters\nKeep this body."
+    await embedding_utils.vectorize_directory_meta(
+        uri, "name: demo", body, context_type="skill", ctx=DummyReq(), content_is_body=True
+    )
+    overview_msg = next(item for item in queue.items if item.context_data["level"] == 1)
+    assert overview_msg.context_data["abstract"] == body
+    assert body in overview_msg.message
+
+    # Existing callers still validate serialized sidecars, and strip only the
+    # outer system metadata from a valid document containing frontmatter.
+    with pytest.raises(AbstractOverviewFormatError, match="must contain directory"):
+        await embedding_utils.vectorize_directory_meta(uri, "abstract", body, ctx=DummyReq())
+    queue.items.clear()
+    await embedding_utils.vectorize_directory_meta(
+        uri, "abstract", render_abstract_overview(1, uri, body), ctx=DummyReq()
+    )
+    overview_msg = next(item for item in queue.items if item.context_data["level"] == 1)
+    assert overview_msg.context_data["abstract"] == body
+    assert body in overview_msg.message

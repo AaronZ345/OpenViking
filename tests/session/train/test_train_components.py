@@ -1250,10 +1250,9 @@ async def test_skill_policy_creation_preserves_lock_ownership(tmp_path, monkeypa
     root = "viking://user/default/skills"
     uri = f"{root}/code-review/SKILL.md"
     processor = SkillProcessor(vikingdb=AsyncMock())
-    config = SimpleNamespace(
-        vlm=SimpleNamespace(get_completion_async=AsyncMock(return_value="Overview"))
-    )
-    monkeypatch.setattr("openviking.utils.skill_processor.get_openviking_config", lambda: config)
+    queue = SimpleNamespace(enqueue=AsyncMock())
+    manager = SimpleNamespace(SEMANTIC="Semantic", get_queue=lambda *args, **kwargs: queue)
+    monkeypatch.setattr("openviking.storage.queuefs.get_queue_manager", lambda: manager)
     policy_set = ExperienceSet(root_uri=root, policies=[], viking_fs=fs, request_context=ctx)
     updater = SkillPolicyUpdater(skill_processor=processor, viking_fs=fs)
     plan = PolicyUpdatePlan(
@@ -1281,8 +1280,22 @@ async def test_skill_policy_creation_preserves_lock_ownership(tmp_path, monkeypa
                 # The callee must not release the caller's tree lock.
                 with pytest.raises(LockAcquisitionError):
                     await fs._async_agfs.pathlock_acquire_exact(fs._uri_to_path(uri, ctx=ctx))
-        # The outer context releases its lease after the nested writes.
+        # Queued indexing keeps its own package lease after the caller exits.
+        with pytest.raises(LockAcquisitionError):
+            await fs._async_agfs.pathlock_acquire_exact(fs._uri_to_path(uri, ctx=ctx))
+        msg = queue.enqueue.await_args.args[0]
+        worker_lease = await fs._async_agfs.pathlock_adopt(msg.lock_handoff)
+        await fs._async_agfs.pathlock_release(worker_lease)
         lease = await fs._async_agfs.pathlock_acquire_tree(fs._uri_to_path(root, ctx=ctx))
         await fs._async_agfs.pathlock_release(lease)
     finally:
+        from openviking.telemetry import unregister_telemetry
+        from openviking.telemetry.request_wait_tracker import get_request_wait_tracker
+
+        if queue.enqueue.await_args:
+            msg = queue.enqueue.await_args.args[0]
+            tracker = get_request_wait_tracker()
+            tracker.mark_semantic_done(msg.telemetry_id, msg.id)
+            tracker.cleanup(msg.telemetry_id)
+            unregister_telemetry(msg.telemetry_id)
         agfs.close()
