@@ -414,7 +414,7 @@ OpenAI 已于 2026 年 8 月 31 日[停止在 ChatGPT 登录的 Codex 中提供 
 
 **gemini provider 配置示例:**
 
-> **注意：** 需安装 `pip install "google-genai>=1.0.0"`。异步批量嵌入：`pip install "openviking[gemini-async]"`。
+> **注意：** 需要在服务端环境安装 `google-genai>=1.0.0`——uv 安装：`uv tool install openviking --upgrade --with "google-genai>=1.0.0"`；pip 安装：`pip install "google-genai>=1.0.0"`。异步批量嵌入改用 extra：`uv tool install "openviking[gemini-async]" --upgrade` 或 `pip install "openviking[gemini-async]"`。
 
 ```json
 {
@@ -1493,39 +1493,6 @@ acl_inherited_grants
 
 火山向量库等远端 backend 的存量 collection 需要由部署方预先添加这些字段和 scalar index，OpenViking 只校验 schema。`volcengine` API key 数据面模式还要求 context collection 和配置的 index 已存在。权限模型详见 [资源访问控制（ACL）](../concepts/15-acl.md)。
 
-<details>
-<summary><b>openGauss</b></summary>
-
-需要 openGauss 服务端支持原生 `vector` 类型，并使用允许远程连接的数据库用户。
-可通过 `pip install "openviking[opengauss]"` 安装可选驱动。
-官方容器中的初始 `omm` 用户可能限制远程登录，必要时请为 OpenViking 创建普通数据库用户。
-
-```json
-{
-  "storage": {
-    "vectordb": {
-      "name": "context",
-      "backend": "opengauss",
-      "project": "default",
-      "distance_metric": "cosine",
-      "dimension": 1024,
-      "opengauss": {
-        "host": "127.0.0.1",
-        "port": 5432,
-        "user": "openviking",
-        "password": "your-password",
-        "db_name": "postgres",
-        "schema": "public",
-        "mode": "standalone"
-      }
-    }
-  }
-}
-```
-
-分布式 openGauss 部署可将 `mode` 设为 `"distributed"`；OpenViking 会尝试把元数据表标记为 reference table，并按 `id` 分布集合表。
-</details>
-
 
 
 ## 配置文件
@@ -1628,14 +1595,14 @@ HTTP 客户端（`SyncHTTPClient` / `AsyncHTTPClient`）和 CLI 工具连接远�
 trusted 网关部署下，也可以在单次命令里用 CLI 参数覆盖这些身份字段：
 
 ```bash
-openviking --account acme --user alice ls viking://
+ov --account acme --user alice ls viking://
 ```
 
 对于 `add-resource`，上传过滤参数会与 `ovcli.conf` 默认值做合并（追加），不会覆盖：
 
 ```bash
 # ovcli.conf: upload.exclude="*.log"
-openviking add-resource ./docs --exclude "*.tmp"
+ov add-resource ./docs --exclude "*.tmp"
 # 实际发送给服务端的 exclude: "*.log,*.tmp"
 ```
 
@@ -1681,8 +1648,8 @@ openviking add-resource ./docs --exclude "*.tmp"
 |------|------|------|--------|
 | `host` | str | 绑定地址 | `127.0.0.1` |
 | `port` | int | 绑定端口 | `1933` |
-| `auth_mode` | str | 认证模式：`"api_key"` 或 `"trusted"`。默认值为 `"api_key"` | `"api_key"` |
-| `root_api_key` | str | Root API Key。在 `api_key` 模式下启用多租户认证；在 `trusted` 模式下它只是可选附加保护，不负责解析普通用户身份 | `null` |
+| `auth_mode` | str / null | 内置模式：`"dev"`、`"api_key"`、`"trusted"`、`"oidc"`、`"ldap"`。省略或设为 null 时，有非空 `root_api_key` 则推导为 `api_key`，否则为 `dev`。 | `null` |
+| `root_api_key` | str | `api_key` 模式必填的 Root API Key；`trusted` 模式仅在 localhost 可省略，非 localhost 部署必填，不负责解析普通用户身份 | `null` |
 | `profile_enabled` | bool | 是否允许 HTTP 请求通过 `profile=1` 开启请求级 cProfile。关闭时服务端会忽略该请求参数；开启后，CLI 可以显示返回的 `profile`，而 Python HTTP client 默认只触发服务端 profile，不会把顶层 `profile` 字段自动附着到大多数 SDK 返回值上。 | `false` |
 | `cors_origins` | list | CORS 允许的来源 | `["*"]` |
 | `public_base_url` | str | MCP `add_resource` 工具向客户端返回的上传指令里使用的对外可见 base URL。解析顺序：环境变量 `OPENVIKING_PUBLIC_BASE_URL` → 本字段 → 请求头 `X-Forwarded-Host` / `X-Forwarded-Proto` → 请求头 `Host` → 监听地址兜底。当 server 部署在反向代理后且代理不转发 `X-Forwarded-*` 时，请显式设置本字段（或环境变量）。 | `null` |
@@ -1695,9 +1662,9 @@ openviking add-resource ./docs --exclude "*.tmp"
 | `user_config_defaults.memory_policy` | object | Session 和 User 都未显式配置策略时使用的部署级默认记忆抽取策略。 | `null` |
 | `agent_evolution.enabled` | bool | 实例级 Agent 进化开关。开启时，session commit 可按 session `memory_policy` 生成或更新 cases、trajectories 和 experiences；关闭时，所有账号和用户均停止生产这三类记忆。已有记忆仍可读取和检索。 | `false` |
 
-`api_key` 模式使用 API Key 认证，也是默认模式；`trusted` 模式信任上游网关或受信调用方注入的 `X-OpenViking-Account` / `X-OpenViking-User` 请求头。
+省略 `auth_mode`（或设为 `null`）时，配置了非空 `root_api_key` 则选择 `api_key`，否则选择 `dev`。`dev` 仅允许监听 localhost，不进行身份认证。`root_api_key` 不能配置为空字符串。
 
-在 `api_key` 模式下配置 `root_api_key` 后，服务端启用正式多租户认证，并通过 Admin API 创建工作区和用户 key。在 `trusted` 模式下，普通请求不需要先注册 user key；每个请求都会根据注入的身份头解析成 `USER`。只有在 `auth_mode = "api_key"` 且未配置 `root_api_key` 时，服务端才会进入开发模式。
+显式设置 `auth_mode: "api_key"` 时，包括 localhost 在内都必须提供非空 `root_api_key`；缺少该 key 会导致启动失败，不会回退到开发模式。使用 root key 调用 Admin API 创建 account 和 user/admin key，数据访问使用这些绑定租户身份的 key。`trusted` 模式接受可信网关注入的 account/user 身份头，无需预先创建 user key；其 root key 仅在 localhost 可省略，监听非 localhost 地址时必填。角色解析、OIDC/LDAP 配置与网关要求参见 [身份认证](04-authentication.md)。
 
 `user_config_defaults` 提供添加目标和记忆抽取的部署级默认配置。添加操作中，显式请求目标仍然优先：`add_resource.to` / `add_resource.parent` 优先于用户默认值，`add_skill.target_uri` 优先于用户默认值。记忆策略优先级为 Session 策略 > User `settings/user_config.json` 策略 > `server.user_config_defaults.memory_policy` > 内核默认策略。`agent_evolution.enabled` 是当前 OpenViking 实例的统一开关，不支持用户级覆盖。HTTP Server 的 worker 会在 session commit 时从解析后的 `ov.conf` 读取当前 Agent 进化配置，因此合法的文件更新无需重启服务即可生效。
 
@@ -1925,7 +1892,7 @@ Task 记录文件位于所属账号的系统目录：
     "extra_request_body": {}
   },
   "rerank": {
-    "provider": "volcengine|openai",
+    "provider": "vikingdb|cohere|openai|litellm",
     "api_key": "string",
     "model": "string",
     "api_base": "string",
@@ -1966,7 +1933,7 @@ Task 记录文件位于所属账号的系统目录：
       "lock_expire": 300.0
     },
     "vectordb": {
-      "backend": "local|remote",
+      "backend": "local|cuvs|http|volcengine|vikingdb",
       "url": "string",
       "project": "string"
     }
