@@ -123,7 +123,7 @@ curl http://localhost:1933/api/v1/fs/ls?uri=viking:// \
 **Python SDK (HTTP)**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(
     url="http://localhost:1933",
@@ -608,7 +608,7 @@ curl http://localhost:1933/api/v1/fs/ls?uri=viking:// \
 **Python SDK**
 
 ```python
-import openviking as ov
+import openviking_sdk as ov
 
 client = ov.SyncHTTPClient(
     url="http://localhost:1933",
