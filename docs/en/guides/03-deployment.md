@@ -301,6 +301,38 @@ After startup, you can access:
 - Web Studio: `http://localhost:1933/studio` (same origin as the API)
 - Legacy entry point: `http://localhost:1934` (Caddy reverse proxy to 1933, kept for existing deployments)
 
+### Deploy on Railway
+
+Click the badge below to deploy OpenViking on Railway:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/openviking)
+
+#### Provisioned Resources & Defaults
+
+- **Container Image**: Uses official image `ghcr.io/volcengine/openviking:latest`, listening on port 1933 with an automatically assigned HTTPS domain.
+- **Persistent Storage**: Mounts a persistent volume at `/app/.openviking`. The configured `storage.workspace` (`/app/.openviking/data`) is stored on this volume, ensuring accounts, resources, and vector data persist across redeployments.
+- **Default Configuration**: Preconfigured with OpenAI defaults. `OPENAI_API_KEY` is the only required input during deployment. The admin key `OPENVIKING_ROOT_API_KEY` is generated automatically and viewable in the **Variables** tab.
+
+#### Quick Start (Web Studio)
+
+Initial bootstrap can be completed entirely within the browser:
+
+1. **Set Admin Key**: Copy `OPENVIKING_ROOT_API_KEY` from Railway Variables, open `https://<your-domain>/studio/settings`, and save it.
+2. **Create User**: Navigate to `https://<your-domain>/studio/users` to create your initial account and user. The user API key will be displayed immediately.
+3. **Start Using**: Use this user API key for subsequent access via Web Studio, the `ov` CLI, and SDKs.
+
+#### Configuration Management
+
+- **Initial Configuration**: The template pre-populates `OPENVIKING_CONF_CONTENT` with a complete configuration referencing `${OPENAI_API_KEY}`. This variable is used only on the first startup, when `ov.conf` does not yet exist.
+- **Later Changes**: After the first startup, edit the volume-backed `ov.conf` directly using `railway ssh` or `railway service files upload --overwrite`. Alternatively, delete `ov.conf` and redeploy to regenerate it from the current `OPENVIKING_CONF_CONTENT` value.
+
+#### Pricing & Resource Sizing
+
+- **Recommended Plan**: For continuous hosting, the **Hobby** plan ($5/mo, which includes $5 of usage credits) is recommended. At ~0.5 GB resident memory, typical monthly cost is around $5–$7.
+- **Free/Trial Limitations**: Railway Free plan ($1/mo credit) is insufficient for continuous service. Trial credits ($5 one-time) are suitable for short-term evaluation; note that volumes are purged 30 days after trial expiration.
+
+> **Security Note**: The service is publicly accessible by default. Keep `OPENVIKING_ROOT_API_KEY` confidential and consult the [public access guide](12-public-access.md) before production rollout.
+
 ### Multi-instance notes
 
 With an embedded vector backend (`local` or `cuvs`), OpenViking holds an exclusive OS file lock on `storage.workspace` by default. The `.openviking.lock` file remains on disk; its presence does not mean a server is running. The OS releases the lock when the server closes it or the process terminates. Do not manually delete a running server's lock file.
