@@ -46,8 +46,10 @@ Claude Code and Codex share this installer (drop `--harness codex` to pick inter
 After install:
 
 ```bash
-codex             # first run: review /hooks once
+codex             # first run: pick "Trust all and continue" at the hook review prompt
 ```
+
+Startup stops on `6 hooks need review` — pick **Trust all and continue**. Every later update that touches a hook asks again, for however many changed. Choosing *Continue without trusting*, or skipping the prompt, leaves the hooks off: MCP tools still work, but recall and capture never fire. Two independent switches have to be on to get them back: `/hooks` (hook trust and on/off) and `/plugins` (the plugin's own enabled state). The same applies to TraeCode CLI 2.0, which runs this plugin under `trae-cli`.
 
 ### B. Codex marketplace install
 
@@ -76,7 +78,7 @@ hooks = true
 Finally start Codex and trust the plugin hooks once:
 
 ```bash
-codex            # then run /hooks inside Codex to review & approve the hooks
+codex            # then trust the hooks at the startup prompt, or via /hooks
 ```
 
 > **Requirements & notes**
