@@ -944,7 +944,8 @@ PDF parsing configuration. Three strategies are supported: `local` (local pdfplu
 
 ### rerank
 
-Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere, and OpenAI-compatible APIs.
+Reranking model for search result refinement. Supports VikingDB (Volcengine), Cohere,
+OpenAI-compatible APIs, LiteLLM, and Jev.
 
 **Volcengine (VikingDB):**
 
@@ -976,19 +977,67 @@ Reranking model for search result refinement. Supports VikingDB (Volcengine), Co
 }
 ```
 
+**Jev (TypeSafe System One) provider:**
+
+```json
+{
+  "rerank": {
+    "provider": "jev",
+    "api_key": "your-typesafe-api-key",
+    "model": "jev-latest",
+    "timeout": 120,
+    "log_payloads": false,
+    "threshold": 0.1
+  }
+}
+```
+
+To use Jev through Vercel AI Gateway, point `api_base` at Vercel's
+[TypeSafe-compatible endpoint](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe)
+and use Vercel's model ID. The request and response formats are identical to
+TypeSafe direct access; the adapter does not special-case Vercel:
+
+```json
+{
+  "rerank": {
+    "provider": "jev",
+    "api_key": "your-vercel-ai-gateway-api-key",
+    "api_base": "https://ai-gateway.vercel.sh/typesafe",
+    "model": "typesafe-ai/jev",
+    "threshold": 0.1
+  }
+}
+```
+
+Notes for Vercel:
+
+- Use a long-lived AI Gateway API key created with
+  `vercel ai-gateway api-keys create`, not the OIDC token from `vercel env pull`,
+  which expires after 12 hours.
+- The Vercel team must have a credit card on file for AI Gateway; otherwise
+  requests fail with 403 `customer_verification_required`.
+- `api_base` must include the `/typesafe` suffix. `https://ai-gateway.vercel.sh/v1`
+  is Vercel's own evaluate protocol and is not supported by the adapter.
+
+The Jev adapter sends the query and candidate documents as structured System One
+`state`, then asks one independent Noul relevance question per candidate. Each returned
+yes probability becomes that document's rerank score. All questions are evaluated in
+parallel in one request, and scores do not compete or have to sum to 1.
+
 **Parameters**
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `provider` | str | `"vikingdb"`, `"cohere"`, or `"openai"`. Auto-detected if omitted. |
+| `provider` | str | `"vikingdb"`, `"cohere"`, `"openai"`, `"litellm"`, or `"jev"`. Auto-detected if omitted. |
 | `ak` | str | VikingDB Access Key (vikingdb provider only) |
 | `sk` | str | VikingDB Secret Key (vikingdb provider only) |
 | `model_name` | str | Model name (vikingdb provider only, default: `doubao-seed-rerank`) |
-| `api_key` | str | API key (for `openai` or `cohere` providers) |
-| `api_base` | str | Endpoint URL (for `openai` provider) |
-| `model` | str | Model name (for `openai` providers) |
-| `timeout` | float | HTTP request timeout in seconds for OpenAI-compatible providers. Increase for slow or cold-starting local rerank servers. Default: `30.0` |
-| `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables truncation. Default: `0` |
+| `api_key` | str | API key (for `openai`, `cohere`, or `jev` providers) |
+| `api_base` | str | Endpoint URL (for `openai` or `jev`; Jev defaults to `https://api.typesafe.ai`, Vercel uses `https://ai-gateway.vercel.sh/typesafe`) |
+| `model` | str | Model name for OpenAI-compatible, LiteLLM, or Jev providers |
+| `timeout` | float | HTTP request timeout in seconds for HTTP rerank providers, including Jev. Default: `30.0` |
+| `max_input_tokens` | int | Maximum estimated raw-text tokens in each query-document pair sent to the reranker. Oversized inputs retain their beginning and end. `0` disables. Default: `0` |
+| `log_payloads` | bool | Log complete rerank request and response payloads. May expose query and document content. Default: `false` |
 | `threshold` | float | Score threshold between `0.0` and `1.0`; results below this are filtered out. Default: `0.1` |
 | `extra_headers` | object | Custom HTTP headers (for OpenAI-compatible providers, optional) |
 
@@ -996,6 +1045,8 @@ Reranking model for search result refinement. Supports VikingDB (Volcengine), Co
 - `vikingdb`: Volcengine VikingDB Rerank API (uses AK/SK)
 - `cohere`: Cohere Rerank API
 - `openai`: OpenAI-compatible Rerank API
+- `litellm`: LiteLLM Rerank API
+- `jev`: Jev (TypeSafe System One) structured-decision API; each document receives an independent Noul relevance score
 
 If rerank is not configured, search uses vector similarity only.
 
@@ -1964,7 +2015,7 @@ For detailed encryption explanations, see [Data Encryption](../concepts/10-encry
     "extra_request_body": {}
   },
   "rerank": {
-    "provider": "vikingdb|cohere|openai|litellm",
+    "provider": "vikingdb|cohere|openai|litellm|jev",
     "api_key": "string",
     "model": "string",
     "api_base": "string",
