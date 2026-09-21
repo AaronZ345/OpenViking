@@ -179,3 +179,163 @@ def test_cloud_recall_legacy_fallback(external_provider, monkeypatch):
     assert provider._search_prefetch_context("deployment preferences", client=client) == ""
     assert client.post.call_count == 2
     assert "rewrite" not in client.post.call_args.args[1]
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "viking://user/zayn/memories/profile.md",
+        "viking://user/zayn/memories/preferences/mem_abc123.md",
+        "viking://user/zayn/peers/hermes/memories/preferences/mem_abc123.md",
+        "viking://~/memories/profile.md",
+        "viking://~/memories/preferences/mem_abc123.md",
+        "viking://~/peers/hermes/memories/preferences/mem_abc123.md",
+    ],
+)
+def test_external_provider_accepts_canonical_forget_uris(external_provider, uri):
+    _, _, module, _ = external_provider("forget-canonical")
+    user_space = "zayn" if uri.startswith("viking://user/") else None
+
+    assert module._validate_forget_memory_uri(uri, user_space=user_space) == (uri, None)
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "viking://user/memories/preferences/mem_abc123.md",
+        "viking://user/peers/hermes/memories/preferences/mem_abc123.md",
+    ],
+)
+def test_external_provider_rejects_uidless_forget_uris(external_provider, uri):
+    _, _, module, _ = external_provider("forget-uidless")
+
+    resolved, error = module._validate_forget_memory_uri(uri)
+
+    assert resolved is None
+    assert "user memory file URIs" in error
+
+
+def test_external_provider_rejects_other_user_forget_uri(external_provider):
+    _, _, module, _ = external_provider("forget-other-user")
+    uri = "viking://user/someone-else/memories/preferences/mem_abc123.md"
+
+    resolved, error = module._validate_forget_memory_uri(uri, user_space="zayn")
+
+    assert resolved is None
+    assert "your own memories" in error
+
+
+def test_external_provider_forget_fails_closed_without_identity(external_provider):
+    _, provider, _, _ = external_provider("forget-unverified")
+    delete_calls = []
+
+    class UnverifiedClient:
+        def get(self, _path, **_kwargs):
+            raise RuntimeError("identity probe unavailable")
+
+        def delete(self, path, **kwargs):
+            delete_calls.append((path, kwargs))
+            return {"result": {}}
+
+    provider._client = UnverifiedClient()
+    result = json.loads(
+        provider._tool_forget({"uri": "viking://user/alice/memories/preferences/mem_abc123.md"})
+    )
+
+    assert "identity" in result["error"].lower()
+    assert delete_calls == []
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "viking://user/alice/memories/./x.md",
+        "viking://user/alice/memories/../../user/bob/memories/x.md",
+        "viking://user/alice/memories/%2e/x.md",
+        "viking://user/alice/memories/%2e%2e/x.md",
+        "viking://~/memories/../x.md",
+    ],
+)
+def test_external_provider_rejects_dot_segments_in_forget_uri(external_provider, uri):
+    _, _, module, _ = external_provider("forget-dot-segments")
+
+    resolved, error = module._validate_forget_memory_uri(uri, user_space="alice")
+
+    assert resolved is None
+    assert "dot path segments" in error
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "viking://user/alice/memories/preferences/mem_abc123.md",
+        "viking://~/memories/preferences/mem_abc123.md",
+    ],
+)
+def test_external_provider_forget_keeps_verified_connection(external_provider, uri):
+    _, provider, module, _ = external_provider("forget-connection-snapshot")
+    identity_requested = threading.Event()
+    continue_identity = threading.Event()
+    requests = {"a": [], "b": []}
+
+    def handler_for(server_name):
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requests[server_name].append(("GET", self.path))
+                identity_requested.set()
+                assert continue_identity.wait(timeout=5)
+                self._respond({"status": "ok", "result": {"user": "alice"}})
+
+            def do_DELETE(self):
+                requests[server_name].append(("DELETE", self.path))
+                self._respond({"status": "ok", "result": {"uri": uri}})
+
+            def _respond(self, payload):
+                body = json.dumps(payload).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        return Handler
+
+    servers = [
+        HTTPServer(("127.0.0.1", 0), handler_for(server_name))
+        for server_name in ("a", "b")
+    ]
+    server_threads = [
+        threading.Thread(target=server.serve_forever, daemon=True) for server in servers
+    ]
+    for server_thread in server_threads:
+        server_thread.start()
+
+    provider._client = module._VikingClient(f"http://127.0.0.1:{servers[0].server_port}")
+    result = []
+    tool_thread = threading.Thread(
+        target=lambda: result.append(provider.handle_tool_call("viking_forget", {"uri": uri}))
+    )
+    tool_thread.start()
+    try:
+        assert identity_requested.wait(timeout=5)
+        provider._client = module._VikingClient(
+            f"http://127.0.0.1:{servers[1].server_port}"
+        )
+        continue_identity.set()
+        tool_thread.join(timeout=5)
+
+        assert not tool_thread.is_alive()
+        assert json.loads(result[0])["status"] == "deleted"
+        assert [method for method, _ in requests["a"]] == ["GET", "DELETE"]
+        assert requests["b"] == []
+    finally:
+        continue_identity.set()
+        tool_thread.join(timeout=5)
+        for server in servers:
+            server.shutdown()
+            server.server_close()
+        for server_thread in server_threads:
+            server_thread.join(timeout=5)
