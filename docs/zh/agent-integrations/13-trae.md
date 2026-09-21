@@ -41,7 +41,7 @@ bash <(curl -fsSL https://ovrelease.tos-cn-beijing.volces.com/memory-plugin-shar
 
 ### TraeCode CLI 2.0：首次启动信任 hooks
 
-TraeCode CLI 2.0 用的是 Codex 插件格式，hooks 要先信任才会运行。启动 `trae-cli` 时会停在这个确认上，选 **Trust all and continue**；想先看一眼 hook 命令就选 Review hooks：
+TraeCode CLI 2.0 的 hooks 要先信任才会运行。启动 `trae-cli` 时会停在这个确认上，选 **Trust all and continue**；想先看一眼 hook 命令就选 Review hooks：
 
 ```text
 Hooks need review

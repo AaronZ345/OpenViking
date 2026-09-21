@@ -41,7 +41,7 @@ Quit and restart the corresponding client after installation.
 
 ### TraeCode CLI 2.0: trust the hooks on first launch
 
-TraeCode CLI 2.0 uses the Codex plugin format, where hooks only run once you trust them. Starting `trae-cli` stops on this prompt — pick **Trust all and continue**, or Review hooks first if you want to read the commands:
+TraeCode CLI 2.0 hooks only run once you trust them. Starting `trae-cli` stops on this prompt — pick **Trust all and continue**, or Review hooks first if you want to read the commands:
 
 ```text
 Hooks need review
