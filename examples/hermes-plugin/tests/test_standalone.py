@@ -339,3 +339,74 @@ def test_external_provider_forget_keeps_verified_connection(external_provider, u
             server.server_close()
         for server_thread in server_threads:
             server_thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("operation", ["mirror", "recall"])
+def test_external_provider_keeps_user_identity_across_reload(
+    external_provider, monkeypatch, operation
+):
+    _, provider, module, _ = external_provider("identity-reload")
+    captured = threading.Event()
+    resume = threading.Event()
+    requests = []
+
+    def get(client, path, params=None, **_kwargs):
+        requests.append((client._user, path, params))
+        if path == "/api/v1/system/status":
+            return {"result": {"user": client._user}}
+        return {"result": {"content": f"Profile for {client._user}"}}
+
+    monkeypatch.setattr(module._VikingClient, "get", get)
+    monkeypatch.setattr(module._VikingClient, "post", lambda *_args, **_kwargs: {})
+    resolve = provider._user_space
+
+    def delayed_identity(client=None, **kwargs):
+        if client is not None and client._user == "alice":
+            captured.set()
+            assert resume.wait(timeout=10)
+        return resolve(client, **kwargs)
+
+    monkeypatch.setattr(provider, "_user_space", delayed_identity)
+
+    def publish(user):
+        provider._endpoint, provider._api_key = "http://127.0.0.1:1933", ""
+        provider._account, provider._user, provider._agent = "test", user, "hermes"
+        provider._publish_client(provider._build_client(), provider._endpoint)
+
+    publish("alice")
+    worker = threading.Thread(
+        target=lambda: (
+            provider.on_memory_write("add", "memory", "Alice prefers tea")
+            if operation == "mirror"
+            else provider.prefetch("", session_id="alice-session")
+        )
+    )
+    worker.start()
+    try:
+        assert captured.wait(timeout=10)
+        publish("bob")
+        resume.set()
+        worker.join(timeout=10)
+        assert not worker.is_alive()
+        assert provider._join_all(lambda: list(provider._memory_write_threads), 10)
+        block = provider.prefetch("", session_id="bob-session")
+        assert "viking://user/bob/memories/profile.md" in block
+        assert "viking://user/alice/" not in block
+        assert any(user == "bob" and path == "/api/v1/system/status" for user, path, _ in requests)
+    finally:
+        resume.set()
+        worker.join(timeout=10)
+
+
+def test_external_provider_does_not_cache_unbound_client_identity(external_provider):
+    from types import SimpleNamespace
+
+    _, provider, module, _ = external_provider("unbound-identity")
+    provider._client = module._VikingClient("http://127.0.0.1:1933", user="bob")
+    provider._conn_snapshot = ("http://127.0.0.1:1933", "", "default", "bob", "hermes")
+    provider._client.get = lambda *_args, **_kwargs: {"result": {"user": "bob"}}
+    unbound = SimpleNamespace(get=lambda *_args, **_kwargs: {"result": {"user": "alice"}})
+    assert provider._user_space(unbound) == "alice"
+    assert provider._user_space() == "bob"
+    assert provider._user_space(unbound) == "alice"
+    assert provider._user_space() == "bob"

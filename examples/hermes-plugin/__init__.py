@@ -250,6 +250,8 @@ class _VikingClient:
         self._account = account or get_secret("OPENVIKING_ACCOUNT", "") or "default"
         self._user = user or get_secret("OPENVIKING_USER", "") or "default"
         self._agent = agent if agent is not None else (get_secret("OPENVIKING_AGENT", "") or _DEFAULT_AGENT)
+        # Every client owns its resolved identity, including clients retained across reloads.
+        self._conn_snapshot = (self._endpoint, self._api_key, self._account, self._user, self._agent)
         self._httpx = _get_httpx()
         if self._httpx is None:
             raise ImportError("httpx is required for OpenViking: pip install httpx")
@@ -1813,17 +1815,16 @@ class OpenVikingMemoryProvider(MemoryProvider):
     def _user_space(self, client=None, *, timeout: Optional[float] = None) -> str:
         """Resolve the user space, caching only a confirmed connection identity.
 
-        Cache is keyed on the connection snapshot, not the client object:
-        _new_client() builds fresh clients from the same snapshot on every write.
-        getattr() throughout: hand-wired providers (``__new__``) may lack these fields.
+        Use the client's snapshot even when a reload has replaced the active connection.
+        Clients with the same resolved settings share the cache; unbound clients do not.
         """
         active = client if client is not None else getattr(self, "_client", None)
-        snapshot = getattr(self, "_conn_snapshot", None)
+        snapshot = getattr(active, "_conn_snapshot", None)
         cached = getattr(self, "_user_space_cache", None)
-        if active is not None and cached is not None and cached[0] == snapshot:
+        if snapshot is not None and cached is not None and cached[0] == snapshot:
             return cached[1]
         if active is not None and (resolved := _resolve_user_space(active, timeout=timeout)):
-            if snapshot is not None and snapshot is getattr(self, "_conn_snapshot", None):  # unchanged under us
+            if snapshot is not None:
                 self._user_space_cache = (snapshot, resolved)
             return resolved
         return str(getattr(active, "_user", "") or getattr(self, "_user", "") or "default").strip() or "default"
