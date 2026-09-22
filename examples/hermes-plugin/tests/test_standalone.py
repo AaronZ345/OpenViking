@@ -410,3 +410,77 @@ def test_external_provider_does_not_cache_unbound_client_identity(external_provi
     assert provider._user_space() == "bob"
     assert provider._user_space(unbound) == "alice"
     assert provider._user_space() == "bob"
+
+
+def test_save_config_targets_explicit_home_and_restores_outer_scope(
+    external_provider, tmp_path, monkeypatch
+):
+    import yaml
+
+    from hermes_constants import reset_hermes_home_override, set_hermes_home_override
+
+    _, provider, _, _ = external_provider("config-provider")
+    active_home = tmp_path / "active"
+    outer_home = tmp_path / "outer"
+    target_home = tmp_path / "target"
+    for home in (active_home, outer_home, target_home):
+        home.mkdir()
+
+    active_before = "model:\n  default: active-model\nmemory:\n  provider: openviking\n"
+    outer_before = "model:\n  default: outer-model\nmemory:\n  provider: openviking\n"
+    target_before = "model:\n  default: target-model\nmemory:\n  provider: openviking\n"
+    (active_home / "config.yaml").write_text(active_before, encoding="utf-8")
+    (outer_home / "config.yaml").write_text(outer_before, encoding="utf-8")
+    (target_home / "config.yaml").write_text(target_before, encoding="utf-8")
+    monkeypatch.setenv("HERMES_HOME", str(active_home))
+
+    outer_token = set_hermes_home_override(outer_home)
+    try:
+        provider.save_config(
+            {"endpoint": "https://target.example/v1", "recall_policy": "always"},
+            str(target_home),
+        )
+
+        # The explicit callback target is updated; neither ambient scope is touched.
+        assert (active_home / "config.yaml").read_text(encoding="utf-8") == active_before
+        assert (outer_home / "config.yaml").read_text(encoding="utf-8") == outer_before
+        target = yaml.safe_load((target_home / "config.yaml").read_text(encoding="utf-8"))
+        assert target["model"]["default"] == "target-model"
+        assert target["memory"]["provider"] == "openviking"
+        assert target["memory"]["openviking"] == {
+            "endpoint": "https://target.example/v1",
+            "recall_policy": "always",
+        }
+
+        # The nested override was restored, so a canonical write still targets outer_home.
+        from hermes_cli.config import save_config
+
+        save_config({"memory": {"provider": "outer-restored"}}, merge_existing=True)
+        outer = yaml.safe_load((outer_home / "config.yaml").read_text(encoding="utf-8"))
+        assert outer["memory"]["provider"] == "outer-restored"
+        assert (active_home / "config.yaml").read_text(encoding="utf-8") == active_before
+    finally:
+        reset_hermes_home_override(outer_token)
+
+
+def test_save_config_preserves_profiles_and_scope_when_target_is_invalid(external_provider):
+    from hermes_constants import (
+        get_hermes_home_override,
+        reset_hermes_home_override,
+        set_hermes_home_override,
+    )
+
+    outer, provider, _, _ = external_provider("outer-config")
+    target, _, _, _ = external_provider("invalid-target")
+    outer_before = (outer / "config.yaml").read_bytes()
+    invalid = "memory: [\n"
+    (target / "config.yaml").write_text(invalid)
+    token = set_hermes_home_override(outer)
+    try:
+        with pytest.raises(RuntimeError, match="formatting error"):
+            provider.save_config({"recall_policy": "always"}, str(target))
+        assert get_hermes_home_override() == str(outer)
+        assert (outer / "config.yaml").read_bytes() == outer_before
+        assert (target / "config.yaml").read_text() == invalid
+    finally:
+        reset_hermes_home_override(token)
