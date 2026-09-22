@@ -68,7 +68,7 @@ TRAE and TRAE CN read `hooks.json` directly and need no such approval — restar
 - `UserPromptSubmit` recalls and injects context for the current request.
 - `PreToolUse` on TRAE and TRAE CN denies `Read`, `Glob`, and `Grep` calls whose path is a `viking://` URI and points to OpenViking MCP tools; a `Bash` or `RunCommand` command that carries a `viking://` URI still runs, with a notice suggesting those tools. TraeCode CLI 2.0 uses the Codex plugin, whose `PreToolUse` matches only `Bash`: it adds the same notice and never denies a call.
 - `Stop` captures and immediately commits the completed turn, including short sessions.
-- The OpenViking MCP server transparently exposes the full server MCP tool set (15 tools): `find`, `search`, `read`, `list`, `tree`, `remember`, `write`, `edit`, `add_resource`, `list_watches`, `cancel_watch`, `grep`, `glob`, `forget`, and `health`. `search` with `mode="context"` returns assembled context.
+- The OpenViking MCP server transparently exposes the full server MCP tool set (16 tools): `find`, `search`, `read`, `list`, `tree`, `remember`, `write`, `edit`, `add_resource`, `add_skill`, `list_watches`, `cancel_watch`, `grep`, `glob`, `forget`, and `health`. `search` with `mode="context"` returns assembled context.
 
 ## Verify
 

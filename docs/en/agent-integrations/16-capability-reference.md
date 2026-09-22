@@ -21,31 +21,31 @@
 
 ## 1.1 Active tool surface (agentic calls)
 
-- **MCP-based harnesses (claude-code, codex/trae-cli, cursor, trae/trae-cn, zcode, opencode) share an identical active tool surface comprising 15 tools.** The server centrally defines these tools. The plugin reads `~/.openviking/ovcli.conf` via its proxy and establishes a connection to the server-defined MCP tools.
+- **MCP-based harnesses (claude-code, codex/trae-cli, cursor, trae/trae-cn, zcode, opencode) share an identical active tool surface comprising 16 tools.** The server centrally defines these tools. The plugin reads `~/.openviking/ovcli.conf` via its proxy and establishes a connection to the server-defined MCP tools.
 
 - `trae-cli` means TraeCode CLI 2.0 (2.0 only). It is installed via a `codex` plugin alias and maintains format compatibility with `codex`. Therefore, it is consolidated into the `codex` row in the matrices below.
 
 | harness | tool surface | tools (enabled by default) | search memory | search resource | search skill | write memory | write resource | write skill | delete type boundary |
 |---|---|---|---|---|---|---|---|---|---|
-| claude-code | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
-| codex / trae-cli | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
-| cursor | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
-| trae / trae-cn | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
-| zcode | MCP passthrough | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
-| opencode | MCP passthrough (host adds an `openviking_` prefix) | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
-| dsh | MCP passthrough (`@deepseek-ai/dsh-mcp-client` → the shared stdio proxy; host adds an `mcp__openviking__` prefix) | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | no type distinction² |
+| claude-code | MCP passthrough | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | no type distinction² |
+| codex / trae-cli | MCP passthrough | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | no type distinction² |
+| cursor | MCP passthrough | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | no type distinction² |
+| trae / trae-cn | MCP passthrough | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | no type distinction² |
+| zcode | MCP passthrough | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | no type distinction² |
+| opencode | MCP passthrough (host adds an `openviking_` prefix) | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | no type distinction² |
+| dsh | MCP passthrough (`@deepseek-ai/dsh-mcp-client` → the shared stdio proxy; host adds an `mcp__openviking__` prefix) | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | no type distinction² |
 | pi | native registration (7 × `viking_*`) | 7 (registration runs preflight checks⁴) | ✅ | ✅ | ✅ | ✅ `viking_remember` | ✅ `viking_add_resource` (URL only) | ❌ | no type distinction; delete by query needs score>0.8³ |
 | openclaw | native registration (15 × `memory_*`/`ov_*` and friends) | 15 (14 on by default⁵) | ✅ `memory_recall` | ✅ `ov_search` (both scopes by default) | ✅ `ov_search` | ✅ `memory_store` | off by default⁵ | ✅ `add_skill` | memory-only allowlist + auto-delete only for a single candidate with score≥0.85 |
 | hermes | native registration (6 × `viking_*`) | 6 (all on once the provider is active) | ✅ | ✅ | ✅ | ✅ `viking_remember` (writes the file directly, no extraction) | ✅ multi-protocol ingest (HTTP/Git/SSH/local file/directory zip) | ❌ | memory-only + `.md` leaf check |
 | ov CLI | CLI commands | ~40 command groups | ✅ `ov find` | ✅ `ov find` | ✅ `ov find` | ✅ `ov add-memory` | ✅ `ov add-resource` | ✅ `ov add-skill` | `ov rm` executes directly (TUI deletion asks for confirmation and blocks root/scope deletes) |
 
-¹ MCP `write` can target `viking://resources`, `viking://user`, or `viking://agent`. Adding skills via MCP is not yet supported; use the openclaw `add_skill` tool, `ov add-skill` CLI, or the REST API instead.
+¹ MCP `write` rejects the user's own `skills/` subtree; under `viking://agent/skills` it writes a plain file that skips skill installation (no frontmatter abstract, no privacy extraction), so use `add_skill` there too. Skills are created, installed, and replaced through the MCP `add_skill` tool (inline SKILL.md text, a Git URL, or a signed upload of a local directory or zip), which shares one install implementation with REST `POST /api/v1/skills`.
 ² MCP `forget` does not differentiate between memory, resource, and skill types. However, the storage layer protects namespace roots: deletion requests for bare `viking://`, `viking://user`, and `viking://agent` are rejected. See [§3.5](#_3-5-type-boundaries-for-writes-and-deletes).
 ³ For `viking_forget` on pi: the `recursive` flag is strictly set to false (directories are never deleted), and deleting by query requires a match score > 0.8.
 ⁴ The `pi` harness registers its tools only if the session misses `bypassSessionPatterns`, `client.health()` passes, and `ensureSession` succeeds (`index.ts:66-108`). If the health check fails, no tools are registered for that session.
 ⁵ The `add_resource` tool in openclaw requires a double opt-in before activation.
 
-**Skill addition/deletion boundaries**: Skills can be added via the openclaw `add_skill` tool (enabled by default), the `ov add-skill` CLI command, or the REST API. Deletion operates across four tiers, detailed in [§3.5](#_3-5-type-boundaries-for-writes-and-deletes).
+**Skill addition/deletion boundaries**: Skills can be added via the MCP `add_skill` tool, the openclaw `add_skill` tool (enabled by default), the `ov add-skill` CLI command, or the REST API. Deletion operates across four tiers, detailed in [§3.5](#_3-5-type-boundaries-for-writes-and-deletes).
 
 ## 1.2 Automatic hook surface (driven by the harness)
 
@@ -87,21 +87,22 @@ These tools are defined on the server side, and future updates will be centrally
 
 | # | Tool | What it does | Key parameters (definition line) |
 |---|---|---|---|
-| 1 | `find` | Fast semantic search requiring no session context | `query, target_uri="", limit=10, min_score=0.35, level, context_type` (`:259`) |
-| 2 | `search` | Deep search, featuring optional `session_id` integration and intent analysis | The session is only loaded if the server has `retrieval.enable_intent` enabled (defaults to true) (`:285`, `:302-304`) |
-| 3 | `read` | Read the full text of one or more `viking://` files | Uses a concurrency semaphore of 10; a single failure yields `(nothing found at <uri>)` rather than raising an exception (`:389`) |
-| 4 | `list` | List a directory (function name `ls`, explicitly registered as `list`) | `recursive=False` (`:423`) |
-| 5 | `tree` | Recursive directory tree | `level_limit=3, node_limit=1000, include_abstract=False` (`:449`) |
-| 6 | `remember` | Write long-term memory | Internally creates a one-shot session (`mcp-store-<uuid12>`) and immediately calls `commit_async` (`:504-523`). This is the only commit entry point on the MCP surface, as there is no explicit commit tool. |
-| 7 | `write` | Write a `viking://` file | `mode=replace\|append\|create`; `replace` falls back to `create` if not found. New files must use an extension from the allowlist: `.md .txt .json .yaml .yml .toml .py .js .ts`. Writable domains are limited to `resources/user/agent`; directories like `skills/`, `peers/`, `privacy/`, and `sessions/` under the user root are read-only. Existing `.abstract.md` / `.overview.md` sidecars may be body-updated, but public APIs cannot create them (`:529`; `content_write.py:60-81`) |
-| 8 | `edit` | Exact string replacement | Supplying an empty `old_string`, finding zero matches, or finding multiple matches without `replace_all` will raise an error and leave the file content unchanged (`:569`) |
-| 9 | `add_resource` | Resource ingestion (remote URL / signed upload of a local file / Connector) | `watch_interval` is defined in minutes (0 disables watching). The local-path branch generates a signed upload URL (default TTL of 600s), and ingestion triggers automatically post-upload without requiring a subsequent API call (`:723-947`) |
-| 10 | `list_watches` | List watch subscriptions; not yet supported on the commercial edition | Returns an error string if the scheduler is not running (`:958`) |
-| 11 | `cancel_watch` | Cancel by `to_uri`; not yet supported on the commercial edition | Deliberately does not expose pause/resume/trigger/update (`:990`) |
-| 12 | `grep` | Regex content search | Multiple patterns run concurrently (semaphore of 10), `node_limit=10` (`:1032`) |
-| 13 | `glob` | Filename glob | `node_limit=100` (`:1084`) |
-| 14 | `forget` | Permanently deletes a URI (unrecoverable) | `recursive=False` by default; type boundaries in [§3.5](#_3-5-type-boundaries-for-writes-and-deletes) (`:1110-1117`) |
-| 15 | `health` | Health check | No parameters (`:1123`) |
+| 1 | `find` | Fast semantic search requiring no session context | `query, target_uri="", limit=10, min_score=0.35, level, context_type, read_content`; `context_type="skill"` on its own routes to `SearchService.find_skills` (package retrieval, `skill_package_retriever.py`): one hit per skill package, the URI rewritten to `<package>/SKILL.md`, the summary read from the package's own abstract, and `read_content` reading that file. Without `target_uri` it searches both `viking://~/skills` and `viking://agent/skills`. Any other `context_type` combination, and a filter-only query with no query text, stay on the generic retrieval path; the URI rewrite and the one-line-per-package collapse still apply when rendering (`:262`) |
+| 2 | `search` | Deep search, featuring optional `session_id` integration and intent analysis | The session is only loaded if the server has `retrieval.enable_intent` enabled (defaults to true) (`:315`). Skills are retrieved per item here and only collapsed when rendering, so a package matching in several files spends several `limit` slots and keeps the matching file's summary |
+| 3 | `read` | Read the full text of one or more `viking://` files | Uses a concurrency semaphore of 10; a single failure yields `(nothing found at <uri>)` rather than raising an exception (`:643`) |
+| 4 | `list` | List a directory (function name `ls`, explicitly registered as `list`) | `recursive=False` (`:784`) |
+| 5 | `tree` | Recursive directory tree | `level_limit=3, node_limit=1000, include_abstract=False`; `include_abstract=true` prints each directory's abstract (up to 1024 chars), so `tree(uri="viking://~/skills", level_limit=1, include_abstract=true)` lists every skill with its description (`:862`) |
+| 6 | `remember` | Write long-term memory | Internally creates a one-shot session (`mcp-store-<uuid12>`) and immediately calls `commit_async` (`:940`). This is the only commit entry point on the MCP surface, as there is no explicit commit tool. |
+| 7 | `write` | Write a `viking://` file | `mode=replace\|append\|create`; `replace` falls back to `create` if not found. New files must use an extension from the allowlist: `.md .txt .json .yaml .yml .toml .py .js .ts`. Writable domains are limited to `resources/user/agent`; directories like `skills/`, `peers/`, `privacy/`, and `sessions/` under the user root are read-only. Existing `.abstract.md` / `.overview.md` sidecars may be body-updated, but public APIs cannot create them. A write under `viking://agent/skills` is not refused but skips skill installation, so use `add_skill` for skills; see [§3.5](#_3-5-type-boundaries-for-writes-and-deletes) (`:965`; `content_write.py:60-81`) |
+| 8 | `edit` | Exact string replacement | Supplying an empty `old_string`, finding zero matches, or finding multiple matches without `replace_all` will raise an error and leave the file content unchanged. Editing a file inside a skill package does not re-run skill installation; see [§3.5](#_3-5-type-boundaries-for-writes-and-deletes) (`:1005`) |
+| 9 | `add_resource` | Resource ingestion (remote URL / signed upload of a local file / Connector) | `watch_interval` is defined in minutes (0 disables watching). The local-path branch generates a signed upload URL (default TTL of 600s), and ingestion triggers automatically post-upload without requiring a subsequent API call (`:1161`) |
+| 10 | `add_skill` | Create, install, or replace skills | `data` (full SKILL.md text) or `path` (Git URL / GitHub tree URL, or a local SKILL.md, directory, or zip — the local branch returns a signed upload URL like `add_resource`); `skills=[...]` selects from a multi-skill source, `list_only=true` previews it; `target_uri="viking://agent/skills"` shares with the account. Same install code as REST `POST /api/v1/skills`. The tool description names it the one entry point for creating and updating a skill, and points deletion at `ov skills remove` or Studio (`:1452`) |
+| 11 | `list_watches` | List watch subscriptions; not yet supported on the commercial edition | Returns an error string if the scheduler is not running (`:1621`) |
+| 12 | `cancel_watch` | Cancel by `to_uri`; not yet supported on the commercial edition | Deliberately does not expose pause/resume/trigger/update (`:1653`) |
+| 13 | `grep` | Regex content search | Multiple patterns run concurrently (semaphore of 10), `node_limit=10` (`:1696`) |
+| 14 | `glob` | Filename glob | `node_limit=100` (`:1765`) |
+| 15 | `forget` | Permanently deletes a URI (unrecoverable) | `recursive=False` by default; type boundaries in [§3.5](#_3-5-type-boundaries-for-writes-and-deletes) (`:1791`) |
+| 16 | `health` | Health check | No parameters (`:1808`) |
 
 Supporting mechanisms:
 
@@ -473,7 +474,7 @@ There are three primary guards on MCP `write` and REST `content/write` (`content
 
 **Tier 4: No deletion offered by default (LangChain / Open WebUI).** LangChain's `viking_forget` is only exposed as a tool when configured with `profile="admin"` or `allow_forget=True`. Open WebUI does not offer any deletion tools.
 
-**Add/delete boundary for skills:** The entry points for adding skills are openclaw's `add_skill` (enabled by default), `ov add-skill`, and REST. The delete surfaces that remain entirely read-only for skills (permitting neither addition nor deletion) are openclaw's `memory_forget` and hermes' `viking_forget`. Conversely, the MCP surface, dsh, Pi, and `ov rm` cannot *add* a skill but can *delete* one. This is because addition is blocked by `_USER_MANAGED_SUBTREES` on the write path, whereas deletion succeeds because the delete path does not check that specific constraint.
+**Add/delete boundary for skills:** The entry points for adding skills are the MCP `add_skill` tool, openclaw's `add_skill` (enabled by default), `ov add-skill`, and REST; `add_resource` refuses skill URIs, and MCP `write` refuses the user's own `skills/` subtree (`_USER_MANAGED_SUBTREES`); under `viking://agent/skills`, `write` is not refused yet but bypasses skill installation. The delete surfaces that remain entirely read-only for skills (permitting neither addition nor deletion) are openclaw's `memory_forget` and hermes' `viking_forget`. The MCP `forget` tool, dsh, Pi, and `ov rm` can delete a skill directory because the delete path does not check that constraint, but only `ov skills remove` and the REST `DELETE /api/v1/skills/{name}` also remove the skill's privacy configuration.
 ## 3.6 Degradation and fault tolerance
 
 ### 3.6.1 Decision matrix
@@ -519,7 +520,7 @@ Each card serves as a quick-reference entry point. It records only the facts and
 ## claude-code
 
 - **Integration docs**: [Claude Code Memory Plugin](./02-claude-code.md)
-- **Form**: A Claude Code plugin (marketplace) featuring a four-in-one architecture: 9 hooks, an MCP proxy (passing through 15 tools), a slash command, a statusline, and 1 experience skill. Version 0.5.1.
+- **Form**: A Claude Code plugin (marketplace) featuring a four-in-one architecture: 9 hooks, an MCP proxy (passing through 16 tools), a slash command, a statusline, and 1 experience skill. Version 0.5.1.
 - **Capability highlights**: The harness with the broadest hook coverage — `SessionStart` (120s) / `UserPromptSubmit` (60s) / `PostToolUse:Read` (5s, the skill-experience hook, off by default) / `PreToolUse:Read|Glob|Grep|Edit|Write|Bash` (5s, `uri-guard`: denies a file tool whose path is a `viking://` URI, adds a notice to a Bash command that carries one) / `Stop` (45s) / `PreCompact` (30s) / `SessionEnd` (30s) / `SubagentStart` (10s) / `SubagentStop` (45s). Recall digesting is enabled by default (local `claude -p`, falling back to the server-side rewrite automatically when the local CLI is unavailable, [§3.2.5](#_3-2-5-recall-digest)). Provides full sub-session isolation via `SubagentStart`/`Stop` ([§3.3.5](#_3-3-5-subagent-session-comparison)), along with a statusline, slash command, and `uri-guard`. All shutdown paths except `kill -9` trigger a commit ([§3.3.3](#_3-3-3-shutdown-method-×-harness-outcome-matrix)).
 - **Behavior notes**: The session ID format is `cc-<raw_CC_session_id>`, while subagents use `…__subagent-<agent_id>`. `Stop` commits at a threshold of 20000 (keep 10), and `PreCompact` commits synchronously. Automatic recall excludes resources ([§3.2.1](#_3-2-1-mechanism-foundation-one-shared-pipeline-two-server-side-paths)). The incremental cursor is stored in `/tmp` (if cleared by the system, the entire session is pushed again).
 - **Configuration**: Configured via environment variables, `ovcli.conf` (`plugin.claude_code`), and `ov.conf` (`claude_code` as per [§3.1.4](#_3-1-4-configuration-layers)), offering roughly 70 tunable parameters. The compressor command and model are hardcoded to `claude`/`sonnet`/`low`/30s.
@@ -670,13 +671,13 @@ If your preferred agent or harness is not among the 11 listed previously, you ca
 
 | Path | Effort | Agent-initiated tool surface | Auto recall/capture hooks | Session/commit | Compaction takeover |
 |---|---|---|---|---|---|
-| ① [Direct MCP connection](./06-mcp-clients.md) | Minutes (fill in one config block) | ✅ All 15 tools | ❌ The model calls them itself | Only `remember` creates a temporary session | ❌ |
+| ① [Direct MCP connection](./06-mcp-clients.md) | Minutes (fill in one config block) | ✅ All 16 tools | ❌ The model calls them itself | Only `remember` creates a temporary session | ❌ |
 | ② HTTP API / SDK / [LangChain](./07-langchain-langgraph.md) | Hours (requires code) | Flexible (call REST as needed) | Custom implementation | Custom implementation (or use the LangChain middleware) | ❌ |
-| ③ Reuse shared-core / the [Agent Plugins portable package](./15-agent-plugins.md) | Days (requires hook adapters) | ✅ 15 tools (through the MCP proxy) | ✅ Full recall/capture/commit/pending set | ✅ | Depends on which events you wire up |
+| ③ Reuse shared-core / the [Agent Plugins portable package](./15-agent-plugins.md) | Days (requires hook adapters) | ✅ 16 tools (through the MCP proxy) | ✅ Full recall/capture/commit/pending set | ✅ | Depends on which events you wire up |
 
 ## 6.2 Path ①: Direct MCP connection (recommended starting point)
 
-Any MCP-capable agent simply needs to point its `mcpServers` configuration to the server's `/mcp` endpoint (refer to [MCP Clients](./06-mcp-clients.md) to locate this configuration for each client). Doing so instantly unlocks all 15 tools ([§2.1](#_2-1-server-side-mcp-tool-surface)). The minimal configuration looks like this:
+Any MCP-capable agent simply needs to point its `mcpServers` configuration to the server's `/mcp` endpoint (refer to [MCP Clients](./06-mcp-clients.md) to locate this configuration for each client). Doing so instantly unlocks all 16 tools ([§2.1](#_2-1-server-side-mcp-tool-surface)). The minimal configuration looks like this:
 
 ```json
 {
@@ -718,8 +719,8 @@ If you need the full spectrum of automation—recall, capture, commit, and pendi
 |---|---|---|---|---|---|
 | **A. [Open WebUI](./08-community-plugins.md)** | Standalone FastAPI OpenAPI tool server | 7 local OpenAPI routes (`ov_search`/`ov_recall_memories`/`ov_add_memory`/`ov_list_memories`/`ov_read_resource`/`ov_add_resource`/`ov_session_status`), no deletion tool | No session concept | Most lightweight: bare `httpx`, no retries or negative caching; `/health` only echoes the config and does not probe OpenViking. | Inactive until the process is explicitly started. |
 | **B. [LangChain/LangGraph](./07-langchain-langgraph.md)** | Python SDK adapter layer (retriever/tools/store/middleware/recorder) | `create_openviking_tools()` provides 12 StructuredTools (`viking_forget` is not in the agent profile by default) | `thread_id`/`session_id` come from the caller; `CommitPolicy` defaults to `never` | Most robust in this group: read-only methods automatically retry once, writes never retry (to prevent duplicates), and partial successes raise a structured exception that can be retried as a slice. | Requires explicit construction before taking effect. |
-| **C. [Agent Plugins 1.0](./15-agent-plugins.md)** | Portable package: `plugin.json` + `skills/` + `mcp.json` (stdio→HTTP proxy) | MCP passthrough for all 15 tools; intentionally excludes hooks (recall relies on a skill instructing the model). | Only `remember` creates a temporary session | Retries handled at the MCP proxy layer (401/403 triggers credential swap, 400/404 triggers re-initialization; max 1 retry each). | Active as soon as loaded by the client. |
-| **D. [Direct MCP Connection](./06-mcp-clients.md)** | No local components, connects straight to `/mcp` | Same as C (15 tools) | Same as C | Depends entirely on the client. | `/mcp` is always on. |
+| **C. [Agent Plugins 1.0](./15-agent-plugins.md)** | Portable package: `plugin.json` + `skills/` + `mcp.json` (stdio→HTTP proxy) | MCP passthrough for all 16 tools; intentionally excludes hooks (recall relies on a skill instructing the model). | Only `remember` creates a temporary session | Retries handled at the MCP proxy layer (401/403 triggers credential swap, 400/404 triggers re-initialization; max 1 retry each). | Active as soon as loaded by the client. |
+| **D. [Direct MCP Connection](./06-mcp-clients.md)** | No local components, connects straight to `/mcp` | Same as C (16 tools) | Same as C | Depends entirely on the client. | `/mcp` is always on. |
 | **E. [Log Ingestion](./09-log-ingestion.md)** | `openviking-server ingest` CLI (runs on the machine hosting the logs, importing them in reverse) | None (write-only, no recall) | Session ID `{prefix}__{harness}__{sanitized native id}`; commit token 6000 / idle 5s / keep 0 | The only integration featuring crash recovery: utilizes a SQLite cursor store, single-instance locking, and a reconciliation process to verify batch delivery. | Disabled by default on two levels (`ingest.enabled` and each harness's individual `enabled` flag are both false); adapters available for claude_code, codex, hermes, opencode, openclaw, and cursor. |
 | **F. [OpenViking Helper](./14-openviking-helper.md)** | Closed-source desktop app | — | — | — | Outside the scope of this codebase. |
 

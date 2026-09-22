@@ -140,11 +140,11 @@ API keys are sent as `Authorization: Bearer ...` by both hooks and the MCP proxy
 
 ## Verify
 
-Restart OpenCode after installation. In an OpenCode session, the plugin should expose the `openviking` MCP server with the full server MCP tool set (15 tools). OpenCode namespaces MCP tools as `openviking_*`:
+Restart OpenCode after installation. In an OpenCode session, the plugin should expose the `openviking` MCP server with the full server MCP tool set (16 tools). OpenCode namespaces MCP tools as `openviking_*`:
 
 - `openviking_find`, `openviking_search` (`openviking_search` with `mode="context"` replaces the former recall tool)
 - `openviking_read`, `openviking_list`, `openviking_tree`, `openviking_grep`, `openviking_glob`
-- `openviking_remember`, `openviking_write`, `openviking_edit`, `openviking_add_resource`
+- `openviking_remember`, `openviking_write`, `openviking_edit`, `openviking_add_resource`, `openviking_add_skill`
 - `openviking_list_watches`, `openviking_cancel_watch`, `openviking_forget`, `openviking_health`
 
 Ask OpenCode to search or browse OpenViking memory. Runtime state and errors are written to:

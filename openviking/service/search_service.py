@@ -179,7 +179,7 @@ class SearchService:
         self,
         query: str,
         ctx: RequestContext,
-        target_uri: str,
+        target_uri: Union[str, List[str]],
         limit: int = 10,
         score_threshold: Optional[float] = None,
         level: Optional[List[int]] = None,

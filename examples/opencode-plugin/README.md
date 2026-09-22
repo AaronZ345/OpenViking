@@ -212,6 +212,7 @@ OpenCode sees the OpenViking MCP server as `openviking`, so tool names are names
 - `openviking_write`: create, overwrite, or append to a `viking://` file.
 - `openviking_edit`: exact string replacement in a `viking://` file.
 - `openviking_add_resource`: add a URL, local file, sitemap, or feed.
+- `openviking_add_skill`: create, install, or replace an agent skill.
 - `openviking_forget`: delete a `viking://` URI after explicit user confirmation.
 - `openviking_list_watches` / `openviking_cancel_watch`: inspect or cancel resource watches.
 - `openviking_health`: check OpenViking server health.

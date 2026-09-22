@@ -164,7 +164,7 @@ OpenCode 的 `mcp.openviking` 配置。
 
 - `openviking_search`、`openviking_find`
 - `openviking_read`、`openviking_list`、`openviking_tree`、`openviking_grep`、`openviking_glob`
-- `openviking_remember`、`openviking_write`、`openviking_edit`、`openviking_add_resource`
+- `openviking_remember`、`openviking_write`、`openviking_edit`、`openviking_add_resource`、`openviking_add_skill`
 - `openviking_list_watches`、`openviking_cancel_watch`、`openviking_forget`、`openviking_health`
 - `openviking_list_watches`、`openviking_cancel_watch`
 

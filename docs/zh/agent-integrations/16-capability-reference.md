@@ -21,31 +21,31 @@
 
 ## 1.1 主动工具面（Agentic 调用能力）
 
-- **MCP 型 harness（claude-code、codex/trae-cli、cursor、trae/trae-cn、zcode、opencode）的主动工具面完全一致，共 15 个工具**：这些工具由服务端统一定义，插件通过代理获得 `~/.openviking/ovcli.conf` 配置后连接服务器定义的 MCP 工具。
+- **MCP 型 harness（claude-code、codex/trae-cli、cursor、trae/trae-cn、zcode、opencode）的主动工具面完全一致，共 16 个工具**：这些工具由服务端统一定义，插件通过代理获得 `~/.openviking/ovcli.conf` 配置后连接服务器定义的 MCP 工具。
 
 - trae-cli 指 TraeCode CLI 2.0（仅支持 2.0），经 codex 插件别名安装，插件与 codex 格式兼容，下文矩阵并入 codex 行。
 
 | harness | 工具面形态 | 工具数（默认开） | 搜 memory | 搜 resource | 搜 skill | 写 memory | 写 resource | 写 skill | 删除类型边界 |
 |---|---|---|---|---|---|---|---|---|---|
-| claude-code | MCP 透传 | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | 无类型区分² |
-| codex / trae-cli | MCP 透传 | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | 无类型区分² |
-| cursor | MCP 透传 | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | 无类型区分² |
-| trae / trae-cn | MCP 透传 | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | 无类型区分² |
-| zcode | MCP 透传 | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | 无类型区分² |
-| opencode | MCP 透传（宿主加 `openviking_` 前缀） | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | 无类型区分² |
-| dsh | MCP 透传 | 15 | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | 无类型区分² |
+| claude-code | MCP 透传 | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | 无类型区分² |
+| codex / trae-cli | MCP 透传 | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | 无类型区分² |
+| cursor | MCP 透传 | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | 无类型区分² |
+| trae / trae-cn | MCP 透传 | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | 无类型区分² |
+| zcode | MCP 透传 | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | 无类型区分² |
+| opencode | MCP 透传（宿主加 `openviking_` 前缀） | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | 无类型区分² |
+| dsh | MCP 透传 | 16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ `add_skill`¹ | 无类型区分² |
 | pi | 原生注册（7 个 `viking_*`） | 7（注册需前置检查⁴） | ✅ | ✅ | ✅ | ✅ `viking_remember` | ✅ `viking_add_resource`（仅 URL） | ❌ | 无类型区分；query 删除需 score>0.8³ |
 | openclaw | 原生注册（15 个 `memory_*`/`ov_*` 等） | 15（默认开 14⁵） | ✅ `memory_recall` | ✅ `ov_search`（默认双 scope） | ✅ `ov_search` | ✅ `memory_store` | 默认关⁵ | ✅ `add_skill` | memory-only 白名单 + 单候选 score≥0.85 才自动删 |
 | hermes | 原生注册（6 个 `viking_*`） | 6（provider 激活即全开） | ✅ | ✅ | ✅ | ✅ `viking_remember`（直写文件，不走抽取） | ✅ 多协议摄取（HTTP/Git/SSH/本地文件/目录 zip） | ❌ | memory-only + `.md` 叶子校验 |
 | ov CLI | CLI 命令 | ~40 命令组 | ✅ `ov find` | ✅ `ov find` | ✅ `ov find` | ✅ `ov add-memory` | ✅ `ov add-resource` | ✅ `ov add-skill` | `ov rm` 直接执行（TUI 删除有确认 + root/scope 禁删） |
 
-¹ MCP `write` 的可写域是 `viking://resources|user|agent`，暂不支持 MCP 新增 skill；新增 skill 的入口是 openclaw `add_skill`、`ov add-skill` 与 REST。
+¹ MCP `write` 拒绝写用户自己的 `skills/` 子树；写 `viking://agent/skills` 时会生成一个绕过 skill 安装流程的普通文件（没有 frontmatter abstract，也不做 privacy 抽取），所以共享 skill 同样要走 `add_skill`。skill 的新建、安装和替换走 MCP `add_skill` 工具（内联 SKILL.md 文本、Git URL，或本地目录/zip 的签名上传），它和 REST `POST /api/v1/skills` 共用同一套安装实现。
 ² MCP `forget` 不区分 memory/resource/skill 类型；存储层保留了命名空间根保护机制（裸 `viking://`、`viking://user`、`viking://agent` 根拒删），详见 [§3.5](#_3-5-写入与删除的类型边界)。
 ³ pi 的 `viking_forget`：其 `recursive` 参数固定为 false（不删除目录），按 query 删除要求匹配分 >0.8。
 ⁴ pi 工具注册前置：需未命中 `bypassSessionPatterns`、`client.health()` 通过、`ensureSession` 成功（`index.ts:66-108`）；health 未通过时本轮不注册工具面。
 ⁵ openclaw 的 `add_resource` 需经过双重 opt-in 后方可开启。
 
-**skill 的增删边界**：新增入口包含 openclaw `add_skill`（默认开）、`ov add-skill` 与 REST；删除边界分四档，详见 [§3.5](#_3-5-写入与删除的类型边界)。
+**skill 的增删边界**：新增入口包含 MCP `add_skill`、openclaw `add_skill`（默认开）、`ov add-skill` 与 REST；删除边界分四档，详见 [§3.5](#_3-5-写入与删除的类型边界)。
 
 ## 1.2 自动 hook 面（通过 Harness 自动实现）
 
@@ -88,21 +88,22 @@ per-harness 章节（档案卡）只写差异；所有共享事实均在本章�
 
 | # | 工具名 | 功能 | 参数要点（定义行号） |
 |---|---|---|---|
-| 1 | `find` | 不依赖会话上下文的快速语义检索 | `query, target_uri="", limit=10, min_score=0.35, level, context_type`（`:259`） |
-| 2 | `search` | 深检索，可带 `session_id` + 意图分析 | `session_id` 仅在服务端 `retrieval.enable_intent`（默认 true）开启时才会加载会话（`:285`，`:302-304`） |
-| 3 | `read` | 读取单个或多个 `viking://` 文件全文 | 并发信号量 10；单条失败返回 `(nothing found at <uri>)` 不抛错（`:389`） |
-| 4 | `list` | 列目录（函数名 `ls`，注册名显式改写为 `list`） | `recursive=False`（`:423`） |
-| 5 | `tree` | 递归目录树 | `level_limit=3, node_limit=1000, include_abstract=False`（`:449`） |
-| 6 | `remember` | 写长期记忆 | 内部建一次性会话 `mcp-store-<uuid12>` 并立即 `commit_async`（`:504-523`）——这是 MCP 面唯一的 commit 入口；MCP 没有显式 commit 工具 |
-| 7 | `write` | 写 `viking://` 文件 | `mode=replace\|append\|create`：replace 覆盖或在缺失时创建，append 追加或在缺失时创建，create 仅创建缺失文件且已存在时返回冲突；显式 create 的文件扩展名白名单为 `.md .txt .json .yaml .yml .toml .py .js .ts`；可写域 `resources/user/agent`；用户根下 `skills/ peers/ privacy/ sessions/` 只读；已存在的 `.abstract.md/.overview.md` sidecar 可改正文，但公共 API 不能创建（`:529`；`content_write.py:60-81`） |
-| 8 | `edit` | 精确字符串替换 | `old_string` 空/0 命中/多命中且非 replace_all 均报错，且文件内容不变（`:569`） |
-| 9 | `add_resource` | 资源摄取（远程 URL / 本地文件签名上传 / Connector） | `watch_interval` 单位为分钟（0=不 watch）；本地路径分支返回签名上传 URL（TTL 默认 600s），上传后自动入库，无需二次调用（`:723-947`） |
-| 10 | `list_watches` | 列 watch 订阅，商业版尚未支持 | scheduler 未运行时返回错误串（`:958`） |
-| 11 | `cancel_watch` | 按 `to_uri` 取消，商业版尚未支持 | 刻意不暴露 pause/resume/trigger/update（`:990`） |
-| 12 | `grep` | 正则内容检索 | 多 pattern 并发（信号量 10），`node_limit=10`（`:1032`） |
-| 13 | `glob` | 文件名 glob | `node_limit=100`（`:1084`） |
-| 14 | `forget` | 删除 URI（不可恢复） | 默认 `recursive=False`；类型边界详见 [§3.5](#_3-5-写入与删除的类型边界)（`:1110-1117`） |
-| 15 | `health` | 健康检查 | 无参（`:1123`） |
+| 1 | `find` | 不依赖会话上下文的快速语义检索 | `query, target_uri="", limit=10, min_score=0.35, level, context_type, read_content`；只传 `context_type="skill"` 时改调 `SearchService.find_skills`（包级检索，`skill_package_retriever.py`）：一个 skill 包一条命中，URI 改写为 `<包根>/SKILL.md`，摘要取包自身的 abstract，`read_content` 也读这个文件；不传 `target_uri` 时同时检索 `viking://~/skills` 与 `viking://agent/skills`。其它 `context_type` 组合，以及不带 query 只给 filter 的调用，仍走通用检索路径；渲染时的 URI 改写和「一个包一条」合并照常生效（`:262`） |
+| 2 | `search` | 深检索，可带 `session_id` + 意图分析 | `session_id` 仅在服务端 `retrieval.enable_intent`（默认 true）开启时才会加载会话（`:315`）。这里按条目检索 skill，只在渲染时合并，所以一个包在多个文件上命中会占掉多个 `limit` 名额，摘要也取自实际命中的文件 |
+| 3 | `read` | 读取单个或多个 `viking://` 文件全文 | 并发信号量 10；单条失败返回 `(nothing found at <uri>)` 不抛错（`:643`） |
+| 4 | `list` | 列目录（函数名 `ls`，注册名显式改写为 `list`） | `recursive=False`（`:784`） |
+| 5 | `tree` | 递归目录树 | `level_limit=3, node_limit=1000, include_abstract=False`；`include_abstract=true` 时打印每个目录的 abstract（最长 1024 字符），因此 `tree(uri="viking://~/skills", level_limit=1, include_abstract=true)` 能列出全部 skill 及其描述（`:862`） |
+| 6 | `remember` | 写长期记忆 | 内部建一次性会话 `mcp-store-<uuid12>` 并立即 `commit_async`（`:940`）——这是 MCP 面唯一的 commit 入口；MCP 没有显式 commit 工具 |
+| 7 | `write` | 写 `viking://` 文件 | `mode=replace\|append\|create`：replace 覆盖或在缺失时创建，append 追加或在缺失时创建，create 仅创建缺失文件且已存在时返回冲突；显式 create 的文件扩展名白名单为 `.md .txt .json .yaml .yml .toml .py .js .ts`；可写域 `resources/user/agent`；用户根下 `skills/ peers/ privacy/ sessions/` 只读；已存在的 `.abstract.md/.overview.md` sidecar 可改正文，但公共 API 不能创建；写 `viking://agent/skills` 不会被拒绝，但会绕过 skill 安装流程，skill 请改用 `add_skill`，详见 [§3.5](#_3-5-写入与删除的类型边界)（`:965`；`content_write.py:60-81`） |
+| 8 | `edit` | 精确字符串替换 | `old_string` 空/0 命中/多命中且非 replace_all 均报错，且文件内容不变；编辑 skill 包内的文件不会重新触发 skill 安装流程，详见 [§3.5](#_3-5-写入与删除的类型边界)（`:1005`） |
+| 9 | `add_resource` | 资源摄取（远程 URL / 本地文件签名上传 / Connector） | `watch_interval` 单位为分钟（0=不 watch）；本地路径分支返回签名上传 URL（TTL 默认 600s），上传后自动入库，无需二次调用（`:1161`） |
+| 10 | `add_skill` | 新建、安装或替换 skill | `data`（完整 SKILL.md 文本）或 `path`（Git URL / GitHub tree URL，或本地 SKILL.md、目录、zip——本地分支和 `add_resource` 一样返回签名上传 URL）；`skills=[...]` 从多 skill 源里挑选，`list_only=true` 只预览；`target_uri="viking://agent/skills"` 表示账户共享。与 REST `POST /api/v1/skills` 共用安装代码。工具描述里写明它是新建和更新 skill 的唯一入口，删除请走 `ov skills remove` 或 Studio（`:1452`） |
+| 11 | `list_watches` | 列 watch 订阅，商业版尚未支持 | scheduler 未运行时返回错误串（`:1621`） |
+| 12 | `cancel_watch` | 按 `to_uri` 取消，商业版尚未支持 | 刻意不暴露 pause/resume/trigger/update（`:1653`） |
+| 13 | `grep` | 正则内容检索 | 多 pattern 并发（信号量 10），`node_limit=10`（`:1696`） |
+| 14 | `glob` | 文件名 glob | `node_limit=100`（`:1765`） |
+| 15 | `forget` | 删除 URI（不可恢复） | 默认 `recursive=False`；类型边界详见 [§3.5](#_3-5-写入与删除的类型边界)（`:1791`） |
+| 16 | `health` | 健康检查 | 无参（`:1808`） |
 
 配套机制：
 
@@ -453,7 +454,7 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 
 **第四档：默认不提供删除（LangChain / Open WebUI）**。LangChain `viking_forget` 需配置 `profile="admin"` 或 `allow_forget=True` 才加入工具面；Open WebUI 则完全不提供删除工具。
 
-**skill 的增删边界**：新增入口是 openclaw `add_skill`（默认开）、`ov add-skill` 与 REST。对 skill 完全只读（不增不删）的删除面是 openclaw `memory_forget` 与 hermes `viking_forget`；相对地，MCP 面、dsh、pi、`ov rm` 加不了 skill 但删得掉——加不了是写路径 `_USER_MANAGED_SUBTREES` 的保护，删得掉是删除路径不检查该集合。
+**skill 的增删边界**：新增入口是 MCP `add_skill`、openclaw `add_skill`（默认开）、`ov add-skill` 与 REST；`add_resource` 拒绝 skill URI，MCP `write` 拒绝用户自己的 `skills/` 子树（`_USER_MANAGED_SUBTREES`）；`viking://agent/skills` 下的 `write` 目前没有拦截，但会绕过 skill 安装流程。对 skill 完全只读（不增不删）的删除面是 openclaw `memory_forget` 与 hermes `viking_forget`。MCP `forget`、dsh、pi、`ov rm` 能删掉 skill 目录，因为删除路径不检查该集合，但只有 `ov skills remove` 和 REST `DELETE /api/v1/skills/{name}` 会同时清理该 skill 的 privacy 配置。
 
 ## 3.6 降级与容错
 
@@ -500,7 +501,7 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 ## claude-code
 
 - **集成文档**：[Claude Code 记忆插件](./02-claude-code.md)
-- **形态**：CC 插件（marketplace），采用四合一架构：9 hook + MCP 代理（15 工具透传）+ slash command + statusline + 1 experience skill。版本 0.5.1。
+- **形态**：CC 插件（marketplace），采用四合一架构：9 hook + MCP 代理（16 工具透传）+ slash command + statusline + 1 experience skill。版本 0.5.1。
 - **能力亮点**：hook 覆盖最全的 harness——SessionStart(120s) / UserPromptSubmit(60s) / PostToolUse:Read(5s，默认关的 skill-experience) / PreToolUse:Read\|Glob\|Grep\|Edit\|Write\|Bash(5s，uri-guard：文件工具的路径是 `viking://` URI 时拒绝，Bash 命令带 `viking://` URI 时附加提示) / Stop(45s) / PreCompact(30s) / SessionEnd(30s) / SubagentStart(10s) / SubagentStop(45s)；默认启用召回再摘要（本地 `claude -p`，本地不可用时自动回落服务端 rewrite，[§3.2.5](#_3-2-5-召回再摘要)）；支持 SubagentStart/Stop 的完整子会话隔离（[§3.3.5](#_3-3-5-subagent-会话对照)）；statusline + slash + uri-guard；关闭链路除 kill -9 外全部 commit（[§3.3.3](#_3-3-3-关闭方式-×-harness-终局矩阵)）。
 - **行为要点**：session id 为 `cc-<CC session_id 原文>`，subagent 为 `…__subagent-<agent_id>`；Stop 阈值 commit 20000/keep 10，PreCompact 同步 commit；自动召回排除 resources（[§3.2.1](#_3-2-1-机制底座-一条共享管线-两条服务端路径)）；增量游标存于 `/tmp`（被系统清理后，同一会话会整段重推）。
 - **配置**：env + ovcli.conf `plugin.claude_code` + ov.conf `claude_code`（[§3.1.4](#_3-1-4-配置体系分层)），约 70 个旋钮；压缩器命令与模型固定为 `claude`/`sonnet`/`low`/30s。
@@ -653,13 +654,13 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 
 | 路径 | 投入 | agent 主动工具面 | 自动召回/捕获 hook | 会话/commit | 压缩接管 |
 |---|---|---|---|---|---|
-| ① [通用 MCP 直连](./06-mcp-clients.md) | 分钟级（填写一段 config 即可） | ✅ 15 工具全量 | ❌ 由模型主动调用 | 仅 `remember` 建临时会话 | ❌ |
+| ① [通用 MCP 直连](./06-mcp-clients.md) | 分钟级（填写一段 config 即可） | ✅ 16 工具全量 | ❌ 由模型主动调用 | 仅 `remember` 建临时会话 | ❌ |
 | ② HTTP API / SDK / [LangChain](./07-langchain-langgraph.md) | 小时级（需写代码） | 自选（按需调 REST） | 自己实现 | 自己实现（或用 LangChain middleware） | ❌ |
-| ③ 复用 shared-core / [Agent Plugins 便携包](./15-agent-plugins.md) | 天级（需写 hook 适配） | ✅ 15 工具（经 MCP 代理） | ✅ 召回/捕获/commit/pending 全套 | ✅ | 视接入哪些事件而定 |
+| ③ 复用 shared-core / [Agent Plugins 便携包](./15-agent-plugins.md) | 天级（需写 hook 适配） | ✅ 16 工具（经 MCP 代理） | ✅ 召回/捕获/commit/pending 全套 | ✅ | 视接入哪些事件而定 |
 
 ## 6.2 路径①：通用 MCP 直连（推荐起步）
 
-任何支持 MCP 的 agent，只需在其 `mcpServers` 配置里指向服务端 `/mcp`（各客户端的具体配置位置见 [MCP 客户端](./06-mcp-clients.md)），即可立刻获得全部 15 个工具（[§2.1](#_2-1-服务端-mcp-工具面)）。最小配置如下：
+任何支持 MCP 的 agent，只需在其 `mcpServers` 配置里指向服务端 `/mcp`（各客户端的具体配置位置见 [MCP 客户端](./06-mcp-clients.md)），即可立刻获得全部 16 个工具（[§2.1](#_2-1-服务端-mcp-工具面)）。最小配置如下：
 
 ```json
 {
@@ -701,8 +702,8 @@ MCP `write` / REST `content/write` 的三道 guard（`content_write.py`）：可
 |---|---|---|---|---|---|
 | **A. [Open WebUI](./08-community-plugins.md)** | 独立的 FastAPI OpenAPI 工具服务器 | 7 个本地 OpenAPI 路由（`ov_search`/`ov_recall_memories`/`ov_add_memory`/`ov_list_memories`/`ov_read_resource`/`ov_add_resource`/`ov_session_status`），无删除工具 | 无会话概念 | 最薄：裸 httpx，无 retry/负缓存；`/health` 仅回显配置，不探测 OV | 进程不启动即不存在 |
 | **B. [LangChain/LangGraph](./07-langchain-langgraph.md)** | Python SDK 适配层（retriever/tools/store/middleware/recorder） | `create_openviking_tools()` 提供 12 个 StructuredTool（`viking_forget` 默认不在 agent profile 中） | `thread_id`/`session_id` 由调用方给；`CommitPolicy` 默认 `never` | 本组最稳：只读方法自动重试 1 次、写方法不重试（防重复）、部分成功抛结构化异常可切片重试 | 需全部显式构造才生效 |
-| **C. [Agent Plugins 1.0](./15-agent-plugins.md)** | 便携包 `plugin.json` + `skills/` + `mcp.json`（stdio→HTTP 代理） | MCP 透传 15 工具；刻意无 hooks（召回靠 skill 教模型） | 仅 `remember` 建临时会话 | MCP 代理层重试（401/403 换凭据、400/404 重初始化各 1 次） | 客户端加载后工具即用 |
-| **D. [通用 MCP 直连](./06-mcp-clients.md)** | 零本地组件，直连 `/mcp` | 同 C（15 工具） | 同 C | 由客户端自定 | `/mcp` 常驻 |
+| **C. [Agent Plugins 1.0](./15-agent-plugins.md)** | 便携包 `plugin.json` + `skills/` + `mcp.json`（stdio→HTTP 代理） | MCP 透传 16 工具；刻意无 hooks（召回靠 skill 教模型） | 仅 `remember` 建临时会话 | MCP 代理层重试（401/403 换凭据、400/404 重初始化各 1 次） | 客户端加载后工具即用 |
+| **D. [通用 MCP 直连](./06-mcp-clients.md)** | 零本地组件，直连 `/mcp` | 同 C（16 工具） | 同 C | 由客户端自定 | `/mcp` 常驻 |
 | **E. [log ingestion](./09-log-ingestion.md)** | `openviking-server ingest` CLI（跑在日志所在机器，反向导入） | 无（只写不召回） | 会话 id `{prefix}__{harness}__{sanitized native id}`；commit token 6000/idle 5s/keep 0 | 唯一有崩溃恢复：SQLite 游标库 + 单实例锁 + reconcile 判定批次落地 | 双重默认关（`ingest.enabled` + 每 harness `enabled` 都 false）；支持 claude_code/codex/hermes/opencode/openclaw/cursor 适配器 |
 | **F. [OpenViking Helper](./14-openviking-helper.md)** | 闭源桌面 App | — | — | — | 不在本文代码基线内 |
 

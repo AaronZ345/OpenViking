@@ -161,7 +161,7 @@ In a new OpenCode session, ask the agent to browse OpenViking memory or search f
 
 - `openviking_search`, `openviking_find`
 - `openviking_read`, `openviking_list`, `openviking_tree`, `openviking_grep`, `openviking_glob`
-- `openviking_remember`, `openviking_write`, `openviking_edit`, `openviking_add_resource`
+- `openviking_remember`, `openviking_write`, `openviking_edit`, `openviking_add_resource`, `openviking_add_skill`
 - `openviking_list_watches`, `openviking_cancel_watch`, `openviking_forget`, `openviking_health`
 - `openviking_list_watches`, `openviking_cancel_watch`
 
@@ -193,6 +193,7 @@ The plugin registers OpenViking's stdio MCP proxy through OpenCode config. The s
 - `openviking_write`: create, overwrite, or append to a `viking://` file.
 - `openviking_edit`: exact string replacement in a `viking://` file.
 - `openviking_add_resource`: add a URL, local file, sitemap, or feed.
+- `openviking_add_skill`: create, install, or replace an agent skill.
 - `openviking_forget`: delete a `viking://` URI after explicit user confirmation.
 - `openviking_list_watches` / `openviking_cancel_watch`: inspect or cancel resource watches.
 - `openviking_health`: check OpenViking server health.
